@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in | private</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/style.css"></head>
+<body><main class="login"><div class="login-card">
+<section class="lock-side" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M32 4 8 13v17c0 15 10 26 24 30 14-4 24-15 24-30V13z" fill="#0d3b2e" stroke="#7ee2a8" stroke-width="3"/><rect x="21" y="29" width="22" height="16" rx="3" fill="#ecfff4"/><path d="M25 29v-5a7 7 0 0 1 14 0v5" fill="none" stroke="#ecfff4" stroke-width="4"/><circle cx="32" cy="37" r="2.5" fill="#0d3b2e"/></svg><strong>Private by default</strong><span class="muted">Only the owner can open this vault.</span></section>
+<section class="form-side"><div class="brand"><img src="/assets/logo.svg" alt="">private</div>
+<h1>Sign in</h1><p class="muted">Complete every step to open your vault.</p>
+
+<div id="err" class="alert" role="alert" hidden></div>
+<form id="f" novalidate><p><button class="btn" type="button" id="pk" hidden>Verify passkey</button></p><div class="field"><label for="pw">Password</label><div class="input"><input id="pw" type="password" autocomplete="current-password" required><button type="button" id="tg" aria-pressed="false">Show</button></div></div>
+<div class="field"><label for="sc">Secret code</label><div class="input"><input id="sc" type="password" autocomplete="off" required></div></div>
+<div id="ts" class="field"></div>
+<div class="row"><button class="btn primary" type="submit">Continue</button></div></form>
+<form id="o" hidden novalidate><p class="muted">We emailed a 6-digit code to your login address.</p><div class="field"><label for="code">Email code</label><div class="input"><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></div></div><button class="btn primary" type="submit">Open vault</button></form>
+<p class="muted"><a href="/recovery.html">Locked out? Start recovery</a></p></section></div></main><script src="/assets/login.js"></script><script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=tsReady" defer></script></body></html>

@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Set up | private</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/style.css"></head>
+<body><main class="login"><div class="card narrow"><div class="brand"><img src="/assets/logo.svg" alt="">private</div><h1>Owner setup</h1><p class="muted">Runs once. Needs the setup token you saved as a Worker secret.</p>
+<div id="err" class="alert" role="alert" hidden></div>
+<form id="f" novalidate><div class="field"><label for="tk">Setup token</label><div class="input"><input id="tk" type="password" autocomplete="off"></div></div>
+<div class="field"><label for="pw">Password (12+ characters)</label><div class="input"><input id="pw" type="password" autocomplete="new-password"></div></div>
+<div class="field"><label for="sc">Secret code (8+ characters)</label><div class="input"><input id="sc" type="password" autocomplete="off"></div></div>
+<button class="btn primary" type="submit">Create owner</button></form></div></main><script src="/assets/setup.js"></script></body></html>
