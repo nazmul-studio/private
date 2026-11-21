@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Overview | private</title>
+  <link rel="icon" href="/favicon.svg">
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-cyan-500/30 selection:text-cyan-200">
+  
+  <div class="ambient-glow"></div>
+  <div class="ambient-glow-2"></div>
+
+  <!-- SVG Gradients Definition -->
+  <svg class="w-0 h-0 absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="cyan-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#38bdf8" />
+        <stop offset="100%" stop-color="#06b6d4" />
+      </linearGradient>
+      <linearGradient id="blue-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#60a5fa" />
+        <stop offset="100%" stop-color="#2563eb" />
+      </linearGradient>
+      <linearGradient id="emerald-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#34d399" />
+        <stop offset="100%" stop-color="#10b981" />
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <!-- Mobile Drawer Backdrop -->
+  <div id="drawer-backdrop" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 hidden md:hidden transition-opacity"></div>
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="w-56 glass-card overflow-y-auto border-r border-blue-950/70 flex flex-col justify-between shrink-0 fixed inset-y-0 left-0 z-50 transition-transform duration-300 md:translate-x-0 -translate-x-full">
+    <div>
+      <!-- Minimalist Icon Header (NO VAULT ID TEXT) -->
+      <div class="h-16 flex items-center justify-between px-4 border-b border-blue-950/70">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-cyan-500 to-sky-400 p-0.5 flex items-center justify-center glow-cyan">
+          <div class="w-full h-full bg-[#030712] rounded-[10px] flex items-center justify-center">
+            <svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-500/30 text-[9px] font-mono text-cyan-400">
+          <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_#22d3ee]"></span>
+          <span>SECURED</span>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="p-2 space-y-1 text-xs">
+        <button data-tab="overview" id="nav-overview" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-cyan-300 bg-blue-600/15 border border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.15)] transition-all">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            <span>Overview</span>
+          </div>
+          <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">Hub</span>
+        </button>
+
+        <button data-tab="files" id="nav-files" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-900/40 transition-all">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+            <span>Files</span>
+          </div>
+          <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300" id="badge-files">0</span>
+        </button>
+
+
+        <button data-tab="all" id="nav-all" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-900/40 transition-all">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+            <span>Media</span>
+          </div>
+          <span class="text-[10px] font-mono text-slate-500" id="badge-all">0</span>
+        </button>
+
+        <button data-tab="photos" id="nav-photos" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-900/40 transition-all">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-4 h-4 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span>Photos</span>
+          </div>
+          <span class="text-[10px] font-mono text-slate-500" id="badge-photos">0</span>
+        </button>
+
+        <button data-tab="videos" id="nav-videos" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-900/40 transition-all">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            <span>Videos</span>
+          </div>
+          <span class="text-[10px] font-mono text-slate-500" id="badge-videos">0</span>
+        </button>
+
+        <button data-tab="favorites" id="nav-favorites" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-900/40 transition-all">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+            </svg>
+            <span>Favorites</span>
+          </div>
+          <span class="text-[10px] font-mono text-slate-500" id="badge-favs">0</span>
+        </button>
+
+        <button data-tab="trash" id="nav-trash" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-slate-500 hover:text-slate-300 hover:bg-slate-900/40 transition-all">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            <span>Trash</span>
+          </div>
+          <span class="text-[10px] font-mono text-slate-600" id="badge-trash">0</span>
+        </button>
+              <button data-tab="albums" id="nav-albums" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-900/40 transition-all">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+            <span>Albums</span>
+          </div>
+        </button>
+        <button data-tab="folders" id="nav-folders" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-900/40 transition-all">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+            <span>Folders</span>
+          </div>
+        </button>
+        <button data-tab="sessions" id="nav-sessions" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-900/40 transition-all">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" /></svg>
+            <span>Sessions</span>
+          </div>
+        </button>
+        <button data-tab="history" id="nav-history" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-900/40 transition-all">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+            <span>Login history</span>
+          </div>
+        </button>
+        <button data-tab="settings" id="nav-settings" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-900/40 transition-all">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+            <span>Settings</span>
+          </div>
+        </button>
+      </nav>
+    </div>
+
+    <button id="btn-signout" class="mx-2 mt-2 px-3 py-2.5 rounded-xl text-xs font-mono text-slate-400 hover:text-white bg-slate-900/60 border border-blue-950 hover:border-cyan-500/40 transition-all">Sign out</button>
+    <!-- Mini Bottom Status Pill -->
+    <div class="p-3 m-2 rounded-xl bg-[#040816] border border-blue-950 text-[10px] font-mono text-slate-500 text-center">
+      R2 · ENCRYPTED AT REST
+    </div>
+  </aside>
+
+  <!-- Main View Frame -->
+  <div class="flex-1 md:pl-56 flex flex-col min-w-0">
+
+    <!-- Top App Header -->
+    <header class="h-16 sticky top-0 z-30 glass-card border-b border-blue-950/70 px-4 md:px-6 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <!-- Mobile Drawer Hamburger -->
+        <button id="menu-btn" class="md:hidden p-2 rounded-xl bg-slate-900 border border-blue-950 text-slate-300 hover:text-white">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+        </button>
+
+        <!-- Search Bar -->
+        <div class="relative w-44 sm:w-64">
+          <svg class="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          <input type="text" id="searchInput" placeholder="Search..." class="w-full bg-[#040816] text-xs text-slate-200 placeholder-slate-600 pl-8 pr-3 py-1.5 rounded-lg border border-blue-950 focus:outline-none focus:border-cyan-400 font-mono">
+        </div>
+      </div>
+
+      <!-- Quick Action Upload Button -->
+      <div class="flex items-center gap-2">
+
+
+        <button id="btn-upload" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-black bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-400 hover:from-cyan-300 hover:to-blue-300 shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all cursor-pointer">
+          <svg class="w-3.5 h-3.5 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          <span>Upload</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Page Body -->
+    <main class="flex-1 p-3 md:p-6 max-w-7xl w-full mx-auto space-y-6">
+
+      <!-- ======================================================== -->
+      <!-- SECTION 1: OVERVIEW (VISUAL TEMPLATES & CIRCLE GAUGES ONLY, NO PHOTOS) -->
+      <!-- ======================================================== -->
+      <div id="view-overview" class="space-y-6 view-active-animate">
+      <div id="resume-slot" class="space-y-3"></div>
+
+      <!-- TOP METRICS ROW: Storage Radial & System Telemetry -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+        <!-- Storage Radial Dashboard Card -->
+        <div class="lg:col-span-5 glass-card rounded-2xl p-5 border border-blue-950/80 card-lift relative overflow-hidden">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-cyan-400 anim-pulse-ring"></span>
+              <h3 class="text-xs font-bold font-mono tracking-wider text-white uppercase">STORAGE</h3>
+            </div>
+            <span class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/50" id="storage-chip">LIVE</span>
+          </div>
+
+          <!-- Radial Circle Gauge -->
+          <div class="flex flex-col sm:flex-row items-center gap-6 my-2">
+            <div class="relative w-36 h-36 flex-shrink-0 flex items-center justify-center">
+              <svg class="w-full h-full -rotate-90" viewBox="0 0 120 120">
+                <!-- Track -->
+                <circle cx="60" cy="60" r="48" fill="none" stroke="#0b132b" stroke-width="9" />
+                <!-- Zeroed progress ring -->
+                <circle id="storage-ring-circle" cx="60" cy="60" r="48" fill="none" stroke="url(#ringGradCyan)" stroke-width="9"
+                  stroke-dasharray="301.59" stroke-dashoffset="301.59" stroke-linecap="round" class="transition-all duration-700 ease-out" />
+                <defs>
+                  <linearGradient id="ringGradCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#06b6d4" />
+                    <stop offset="100%" stop-color="#3b82f6" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <!-- Center Text -->
+              <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+                <span id="storage-percent-label" class="text-2xl font-extrabold font-mono text-white tracking-tight">0<span class="text-xs text-cyan-400">%</span></span>
+                <span class="text-[8px] font-mono uppercase text-slate-400 tracking-wider">USED</span>
+              </div>
+            </div>
+
+            <!-- Clean Numbers Breakdown -->
+            <div class="w-full space-y-3">
+              <div class="p-2.5 rounded-xl bg-[#040817] border border-blue-950/70">
+                <div class="flex justify-between text-[11px] font-mono mb-1">
+                  <span class="text-slate-400">Used</span>
+                  <span id="storage-used-label" class="text-cyan-300 font-bold">0.00 GB</span>
+                </div>
+                <div class="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                  <div id="storage-used-bar" class="h-full bg-cyan-400 w-0 transition-all duration-500"></div>
+                </div>
+              </div>
+              <div class="p-2.5 rounded-xl bg-[#040817] border border-blue-950/70">
+                <div class="flex justify-between text-[11px] font-mono mb-1">
+                  <span class="text-slate-400">Available</span>
+                  <span id="storage-free-label" class="text-slate-300 font-bold">8.00 GB</span>
+                </div>
+                <div class="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                  <div class="h-full bg-slate-700 w-full"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Mini Gauges -->
+          <div class="grid grid-cols-3 gap-2 pt-3 border-t border-blue-950/60 mt-3">
+            <div class="text-center p-2 rounded-lg bg-[#040817]/60 border border-blue-950/40">
+              <span class="text-[9px] font-mono text-slate-400 block">PHOTOS</span>
+              <span id="gauge-photos-count" class="text-xs font-mono font-bold text-cyan-300">0</span>
+            </div>
+            <div class="text-center p-2 rounded-lg bg-[#040817]/60 border border-blue-950/40">
+              <span class="text-[9px] font-mono text-slate-400 block">VIDEOS</span>
+              <span id="gauge-videos-count" class="text-xs font-mono font-bold text-blue-300">0</span>
+            </div>
+            <div class="text-center p-2 rounded-lg bg-[#040817]/60 border border-blue-950/40">
+              <span class="text-[9px] font-mono text-slate-400 block">FILES</span>
+              <span id="gauge-files-count" class="text-xs font-mono font-bold text-amber-300">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Telemetry Status Card (Zeroed Out & Short Text) -->
+        <div class="lg:col-span-7 glass-card rounded-2xl p-5 border border-blue-950/80 card-lift space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 anim-pulse-ring"></span>
+              <h3 class="text-xs font-bold font-mono tracking-wider text-white uppercase">SYSTEM STATUS</h3>
+            </div>
+            <span class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-500/40" id="status-chip">READY</span>
+          </div>
+
+          <!-- 4 Zeroed Circular Mini Gauges -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+            <!-- CPU -->
+            <div class="p-3 rounded-xl bg-[#040817] border border-blue-950/70 text-center card-lift">
+              <div class="relative w-14 h-14 mx-auto mb-2 flex items-center justify-center">
+                <svg class="w-full h-full -rotate-90" viewBox="0 0 44 44">
+                  <circle cx="22" cy="22" r="18" fill="none" stroke="#0a1228" stroke-width="3.5" />
+                  <circle cx="22" cy="22" r="18" fill="none" stroke="#06b6d4" stroke-width="3.5" stroke-dasharray="113.1" stroke-dashoffset="113.1" stroke-linecap="round" id="gauge-1-ring" />
+                </svg>
+                <span class="absolute text-[11px] font-mono font-bold text-white" id="gauge-1-val">0</span>
+              </div>
+              <span class="text-[10px] font-mono font-semibold text-slate-300 block">DB</span>
+              <span class="text-[9px] font-mono text-slate-400" id="gauge-1-sub"></span>
+            </div>
+
+            <!-- RAM -->
+            <div class="p-3 rounded-xl bg-[#040817] border border-blue-950/70 text-center card-lift">
+              <div class="relative w-14 h-14 mx-auto mb-2 flex items-center justify-center">
+                <svg class="w-full h-full -rotate-90" viewBox="0 0 44 44">
+                  <circle cx="22" cy="22" r="18" fill="none" stroke="#0a1228" stroke-width="3.5" />
+                  <circle cx="22" cy="22" r="18" fill="none" stroke="#3b82f6" stroke-width="3.5" stroke-dasharray="113.1" stroke-dashoffset="113.1" stroke-linecap="round" id="gauge-2-ring" />
+                </svg>
+                <span class="absolute text-[11px] font-mono font-bold text-white" id="gauge-2-val">0</span>
+              </div>
+              <span class="text-[10px] font-mono font-semibold text-slate-300 block">SESSIONS</span>
+              <span class="text-[9px] font-mono text-slate-400" id="gauge-2-sub"></span>
+            </div>
+
+            <!-- LATENCY -->
+            <div class="p-3 rounded-xl bg-[#040817] border border-blue-950/70 text-center card-lift">
+              <div class="relative w-14 h-14 mx-auto mb-2 flex items-center justify-center">
+                <svg class="w-full h-full -rotate-90" viewBox="0 0 44 44">
+                  <circle cx="22" cy="22" r="18" fill="none" stroke="#0a1228" stroke-width="3.5" />
+                  <circle cx="22" cy="22" r="18" fill="none" stroke="#10b981" stroke-width="3.5" stroke-dasharray="113.1" stroke-dashoffset="113.1" stroke-linecap="round" id="gauge-3-ring" />
+                </svg>
+                <span class="absolute text-[10px] font-mono font-bold text-white" id="gauge-3-val">0</span>
+              </div>
+              <span class="text-[10px] font-mono font-semibold text-slate-300 block">PING</span>
+              <span class="text-[9px] font-mono text-slate-400" id="gauge-3-sub"></span>
+            </div>
+
+            <!-- CACHE -->
+            <div class="p-3 rounded-xl bg-[#040817] border border-blue-950/70 text-center card-lift">
+              <div class="relative w-14 h-14 mx-auto mb-2 flex items-center justify-center">
+                <svg class="w-full h-full -rotate-90" viewBox="0 0 44 44">
+                  <circle cx="22" cy="22" r="18" fill="none" stroke="#0a1228" stroke-width="3.5" />
+                  <circle cx="22" cy="22" r="18" fill="none" stroke="#a855f7" stroke-width="3.5" stroke-dasharray="113.1" stroke-dashoffset="113.1" stroke-linecap="round" id="gauge-4-ring" />
+                </svg>
+                <span class="absolute text-[11px] font-mono font-bold text-white" id="gauge-4-val">0</span>
+              </div>
+              <span class="text-[10px] font-mono font-semibold text-slate-300 block">FAILED 24H</span>
+              <span class="text-[9px] font-mono text-slate-400" id="gauge-4-sub"></span>
+            </div>
+          </div>
+
+          <!-- Minimal Status Indicators -->
+          <div class="grid grid-cols-2 gap-2 pt-2 border-t border-blue-950/60">
+            <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-[#040817]/60 border border-blue-950/40">
+              <span class="text-[10px] font-mono text-slate-400">Security</span>
+              <span class="text-[10px] font-mono text-cyan-300 font-bold">AES-256</span>
+            </div>
+            <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-[#040817]/60 border border-blue-950/40">
+              <span class="text-[10px] font-mono text-slate-400">State</span>
+              <span class="text-[10px] font-mono text-emerald-400 font-bold" id="state-label">OPEN</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- TRAFFIC & GEOLOCATION (Minimal Dark Map with Radar Scan & Zero Mock Data) -->
+      <div class="glass-card rounded-2xl p-5 border border-blue-950/80 card-lift space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3 class="text-xs font-bold font-mono tracking-wider text-white uppercase">TRAFFIC & GEOLOCATION</h3>
+          </div>
+          <span class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-blue-950 text-cyan-300 border border-blue-800/40" id="map-sessions-chip">0 SESSIONS</span>
+        </div>
+
+        <!-- Clean Dark World Map Container with Radar Scanner Animation -->
+        <div class="relative w-full h-48 sm:h-56 rounded-xl bg-[#030614] border border-blue-950/90 overflow-hidden flex items-center justify-center">
+          <!-- Cyber Grid Pattern -->
+          <div class="absolute inset-0 bg-[linear-gradient(to_right,#09132c_1px,transparent_1px),linear-gradient(to_bottom,#09132c_1px,transparent_1px)] bg-[size:2rem_2rem] opacity-40"></div>
+
+          <!-- Radar Sweep Beam Effect -->
+          <div class="absolute w-72 h-72 rounded-full border border-cyan-500/20 pointer-events-none anim-pulse-ring"></div>
+          <div class="absolute w-44 h-44 rounded-full border border-blue-500/30 pointer-events-none"></div>
+
+          <!-- Stylized Dark World Map Outlines -->
+          <svg class="w-full h-full opacity-25 p-4" viewBox="0 0 1000 500" fill="currentColor">
+            <g fill="#38bdf8">
+              <!-- North America -->
+              <path d="M150,120 Q180,90 240,110 Q280,140 260,190 Q220,220 180,240 Q130,190 150,120 Z"/>
+              <path d="M100,80 Q130,60 160,80 Q140,110 110,100 Z"/>
+              <!-- South America -->
+              <path d="M260,260 Q320,270 340,330 Q320,410 280,450 Q250,380 250,320 Z"/>
+              <!-- Europe -->
+              <path d="M480,110 Q540,90 560,130 Q530,170 480,160 Q460,130 480,110 Z"/>
+              <path d="M440,100 Q470,80 480,100 Q450,120 440,100 Z"/>
+              <!-- Africa -->
+              <path d="M470,180 Q560,190 570,270 Q540,360 490,380 Q450,280 470,180 Z"/>
+              <!-- Asia -->
+              <path d="M580,100 Q720,80 820,130 Q840,240 760,290 Q650,260 590,190 Z"/>
+              <!-- Australia -->
+              <path d="M760,340 Q840,330 870,380 Q830,440 760,420 Q740,370 760,340 Z"/>
+            </g>
+          </svg>
+
+          <svg id="map-pins" class="absolute inset-0 w-full h-full p-4 z-20" viewBox="0 0 1000 500"></svg>
+          <!-- Center Standby Badge -->
+          <div id="map-idle" class="relative z-10 flex flex-col items-center justify-center p-3 rounded-xl bg-[#040817]/90 border border-blue-900/60 backdrop-blur-md shadow-2xl space-y-1">
+            <div class="w-8 h-8 rounded-full bg-cyan-950 border border-cyan-500/40 flex items-center justify-center text-cyan-400 anim-float">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <span id="map-idle-title" class="text-xs font-mono font-bold text-slate-200">NO LOCATION DATA</span>
+            <span id="map-idle-sub" class="text-[9px] font-mono text-slate-400">No session location recorded yet</span>
+          </div>
+        </div>
+
+        <!-- 3 Minimal Zeroed Indicators -->
+        <div class="grid grid-cols-3 gap-2 text-center pt-1">
+          <div class="p-2.5 rounded-xl bg-[#040817] border border-blue-950/70">
+            <span class="text-[9px] font-mono text-slate-400 block">VISITORS</span>
+            <span id="map-visitors" class="text-xs font-mono font-bold text-slate-200">0</span>
+          </div>
+          <div class="p-2.5 rounded-xl bg-[#040817] border border-blue-950/70">
+            <span class="text-[9px] font-mono text-slate-400 block">REQUESTS</span>
+            <span id="map-requests" class="text-xs font-mono font-bold text-slate-200">0</span>
+          </div>
+          <div class="p-2.5 rounded-xl bg-[#040817] border border-blue-950/70">
+            <span class="text-[9px] font-mono text-slate-400 block">BANDWIDTH</span>
+            <span id="map-bandwidth" class="text-xs font-mono font-bold text-slate-200">0 B</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 24-HOUR TRAFFIC & SESSIONS -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        
+        <!-- 24-Hour Traffic Chart (Flatline at 0) -->
+        <div class="glass-card rounded-2xl p-5 border border-blue-950/80 card-lift space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-bold font-mono tracking-wider text-white uppercase">24-HOUR TRAFFIC</h3>
+            <span class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-slate-900 text-slate-400 border border-slate-800" id="traffic-chip">0 REQ</span>
+          </div>
+          <div id="traffic-bars" class="h-28 flex items-end gap-1 pt-4 pb-2 px-1 border-b border-blue-950/70"></div>
+          <div class="flex justify-between text-[9px] font-mono text-slate-400">
+            <span id="tl-0">00:00</span>
+            <span id="tl-1">06:00</span>
+            <span id="tl-2">12:00</span>
+            <span id="tl-3">18:00</span>
+            <span>NOW</span>
+          </div>
+        </div>
+
+        <!-- Session Audit Log (Clean Empty State) -->
+        <div class="glass-card rounded-2xl p-5 border border-blue-950/80 card-lift space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-bold font-mono tracking-wider text-white uppercase">ACTIVE SESSIONS</h3>
+            <span class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-slate-900 text-slate-400 border border-slate-800" id="sessions-chip">0 ACTIVE</span>
+          </div>
+          <div id="sessions-list" class="space-y-2"></div>
+          <div id="sessions-empty" class="py-7 flex flex-col items-center justify-center text-center space-y-2 border border-dashed border-blue-950/80 rounded-xl bg-[#030614]/60">
+            <div class="w-10 h-10 rounded-xl bg-slate-900/80 border border-blue-900/40 flex items-center justify-center text-slate-400 anim-float">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <span class="text-xs font-mono font-semibold text-slate-300 uppercase">NO ACTIVE SESSIONS</span>
+            <span class="text-[10px] font-mono text-slate-400">Sign in to create a session</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <div id="view-files" class="hidden space-y-5 view-active-animate">
+
+      <!-- Header with minimal text -->
+      <div class="flex items-center justify-between border-b border-blue-950/70 pb-3">
+        <div class="flex items-center gap-2">
+          <h2 class="text-sm font-bold font-mono tracking-wider text-white uppercase">FILES</h2>
+          <span id="files-total-badge" class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-950/60 text-amber-400 border border-amber-500/30">0</span>
+        </div>
+        <button data-pick="1" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-black bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.3)] transition-all cursor-pointer">
+          <svg class="w-3.5 h-3.5 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          <span>Upload File</span>
+        </button>
+      </div>
+
+      <!-- Short Category Filter Pills -->
+      <div class="flex flex-wrap gap-2 pt-1">
+        <button data-ff="all" id="ff-all" class="pill-btn px-3 py-1 rounded-lg text-xs font-mono font-semibold bg-amber-950/80 text-amber-300 border border-amber-500/40">All</button>
+        <button data-ff="pdf" id="ff-pdf" class="pill-btn px-3 py-1 rounded-lg text-xs font-mono text-slate-400 hover:text-white bg-slate-900/60 border border-blue-950">PDF</button>
+        <button data-ff="archive" id="ff-archive" class="pill-btn px-3 py-1 rounded-lg text-xs font-mono text-slate-400 hover:text-white bg-slate-900/60 border border-blue-950">ZIP</button>
+        <button data-ff="document" id="ff-document" class="pill-btn px-3 py-1 rounded-lg text-xs font-mono text-slate-400 hover:text-white bg-slate-900/60 border border-blue-950">Docs</button>
+        <button data-ff="media" id="ff-media" class="pill-btn px-3 py-1 rounded-lg text-xs font-mono text-slate-400 hover:text-white bg-slate-900/60 border border-blue-950">Media</button>
+      </div>
+
+      <!-- Drag & Drop Zone -->
+      <div id="files-drop-area"
+        class="border border-dashed border-amber-500/30 hover:border-amber-400/70 rounded-2xl p-6 text-center bg-amber-950/5 hover:bg-amber-950/10 transition-all duration-200 card-lift cursor-pointer"
+        data-pick="1">
+        <div class="w-10 h-10 mx-auto rounded-xl bg-amber-950/50 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-2 anim-float">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+        </div>
+        <p class="text-xs font-mono text-slate-300">Drop files or <span class="text-amber-400 font-bold underline">browse</span></p>
+      </div>
+
+      <!-- Short Empty State (NO FILES) -->
+      <div id="files-empty-state" class="py-16 text-center rounded-2xl border border-dashed border-blue-950 bg-blue-950/10 space-y-2">
+        <div class="w-12 h-12 mx-auto rounded-2xl bg-amber-950/40 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)] anim-float">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+        </div>
+        <h3 id="files-empty-title" class="text-xs font-mono font-semibold text-slate-300 uppercase">NO FILES</h3>
+      </div>
+
+      <!-- Container for File Rows -->
+      <input type="file" id="vaultFileInput" multiple class="hidden" accept="image/*,video/*,application/pdf,.heic,.mov,.zip,.rar,.7z,.tar,.gz,.bz2,.doc,.docx,.txt,.rtf,.odt,.xlsx,.xls,.csv,.json,.md">
+      <div id="files-list-container" class="space-y-2"></div>
+    </div>
+
+    <div id="view-media" class="hidden space-y-4">
+        
+        <!-- Media Filter & Controls Sub-header -->
+        <div class="flex items-center justify-between gap-3 pb-2 border-b border-blue-950/70">
+          <div class="flex items-center gap-2">
+            <a id="media-back" href="#albums" class="hidden text-[10px] font-mono text-cyan-400 hover:text-cyan-300">← BACK</a>
+            <h2 id="media-view-title" class="text-xs font-bold font-mono tracking-wider text-slate-200 uppercase">MEDIA</h2>
+            <span class="text-[10px] font-mono text-cyan-400 px-2 py-0.5 rounded bg-blue-950/80 border border-cyan-500/30" id="media-count-badge">0</span>
+          </div>
+
+          <!-- Density Switch -->
+          <div class="flex items-center p-0.5 rounded-lg bg-[#040816] border border-blue-950 text-[10px] font-mono">
+            <button data-grid="dense" id="btn-dense" class="px-2 py-1 rounded bg-blue-600/80 text-white">Compact</button>
+            <button data-grid="normal" id="btn-normal" class="px-2 py-1 rounded text-slate-400 hover:text-white">Medium</button>
+          </div>
+        </div>
+
+        <!-- High Density Serial Grid (Small square tiles, many per row) -->
+        <div id="media-grid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2">
+          <!-- Rendered by JS -->
+        </div>
+
+        <!-- Empty State -->
+        <!-- Empty State -->
+        <div id="empty-state" class="text-center py-20 border border-dashed border-blue-950 rounded-2xl bg-blue-950/10 space-y-2">
+          <div class="w-12 h-12 mx-auto rounded-2xl bg-cyan-950/40 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)] anim-float">
+            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          </div>
+          <h3 id="empty-state-title" class="text-xs font-mono font-semibold text-slate-300 uppercase">NO MEDIA</h3>
+        </div>
+        </div>
+
+      <div id="view-page" class="hidden space-y-5"></div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-10 border-t border-blue-950/50 px-6 flex items-center justify-between text-[10px] font-mono text-slate-600">
+      <span>PRIVATE CLOUD VAULT</span>
+      <span id="year"></span>
+    </footer>
+  </div>
+
+  <!-- Fullscreen Lightbox Media Viewer -->
+  <div id="lightbox" class="fixed inset-0 z-50 bg-black/95 backdrop-blur-2xl hidden flex flex-col justify-between">
+    <div class="h-14 px-4 md:px-6 border-b border-blue-950/80 flex items-center justify-between bg-black/40">
+      <div class="flex items-center gap-3">
+        <span id="lb-type-badge" class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">PHOTO</span>
+        <div>
+          <h4 id="lb-title" class="text-xs font-semibold text-white truncate max-w-xs md:max-w-lg font-mono"></h4>
+          <p id="lb-meta" class="text-[10px] text-slate-400 font-mono"></p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1.5">
+        <button data-act="toggleCurrentFavorite" id="lb-fav-btn" class="p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-amber-400 transition-colors">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+        </button>
+
+        <button data-act="lbAdd" id="lb-add-btn" title="lbAdd" class="hidden p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-cyan-400 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></button>
+        <button data-act="lbRemove" id="lb-rm-btn" title="lbRemove" class="hidden p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-amber-400 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/></svg></button>
+        <button data-act="lbRestore" id="lb-restore-btn" title="lbRestore" class="hidden p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-emerald-400 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></button>
+        <button data-act="lbDelete" id="lb-del-btn" title="lbDelete" class="hidden p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-rose-400 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+        <a id="lb-download-btn" href="#" download class="p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-cyan-400 transition-colors">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        </a>
+
+        <button data-act="closeLightbox" class="p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-white transition-colors">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Lightbox Stage -->
+    <div class="relative flex-1 flex items-center justify-center p-3 overflow-hidden">
+      <button data-act="prevMedia" class="absolute left-3 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-xl bg-black/60 hover:bg-cyan-500/20 text-white hover:text-cyan-400 border border-blue-900/40 transition-all cursor-pointer">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </button>
+
+      <div id="lb-media-container" class="max-w-5xl max-h-[75vh] flex items-center justify-center"></div>
+
+      <button data-act="nextMedia" class="absolute right-3 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-xl bg-black/60 hover:bg-cyan-500/20 text-white hover:text-cyan-400 border border-blue-900/40 transition-all cursor-pointer">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+
+    <div class="h-10 px-6 border-t border-blue-950/80 bg-black/60 flex items-center justify-between text-[10px] font-mono text-slate-400">
+      <span id="lb-index-counter"></span>
+      <span class="text-slate-600">ESC TO CLOSE</span>
+    </div>
+  </div>
+
+  <!-- Upload Modal -->
+  <div id="upload-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="glass-card w-full max-w-md rounded-2xl p-5 space-y-4 glow-cyan border-cyan-400/30">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-bold font-mono tracking-wider text-white uppercase">Upload Media</span>
+        <button data-act="closeUploadModal" class="text-slate-500 hover:text-white">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="border border-dashed border-cyan-500/30 hover:border-cyan-400 rounded-xl p-6 text-center bg-cyan-950/10 cursor-pointer">
+        <input type="file" id="modalFileInput" class="hidden" accept="image/*,video/*,application/pdf,.heic,.mov,.zip,.rar,.7z,.tar,.gz,.bz2,.doc,.docx,.txt,.rtf,.odt,.xlsx,.xls,.csv,.json,.md" multiple>
+        <label for="modalFileInput" class="cursor-pointer space-y-2 block">
+          <div class="w-8 h-8 mx-auto rounded-lg bg-cyan-500/20 text-cyan-300 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+          </div>
+          <p class="text-xs font-medium text-slate-200">Select photos, videos, PDFs, ZIPs or documents</p>
+          <p class="text-[10px] font-mono text-slate-500">Photos, PDFs &amp; files up to 50 MB · videos up to 350 MB</p>
+        </label>
+      </div>
+
+      <div id="upload-progress-container" class="hidden space-y-1.5">
+        <div class="flex justify-between text-[10px] font-mono">
+          <span class="text-slate-300" id="uploading-file-name">uploading...</span>
+          <span class="text-cyan-400 font-bold" id="upload-percent">0%</span>
+        </div>
+        <div class="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden border border-blue-950">
+          <div id="upload-bar" class="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full w-0 transition-all duration-300"></div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-1 text-xs">
+        <button data-act="closeUploadModal" class="px-3 py-1.5 text-slate-400 hover:text-white">Cancel</button>
+        <button data-act="startUpload" id="btn-start-upload" class="px-3.5 py-1.5 rounded-lg font-semibold text-black bg-cyan-400 hover:bg-cyan-300 font-mono text-xs">Upload</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div id="maint" class="hidden fixed inset-0 z-[70] bg-[#020617] overflow-auto flex items-center justify-center p-5">
+    <div class="ambient-glow"></div><div class="ambient-glow-2"></div>
+    <div class="relative z-10 glass-card glow-cyan rounded-3xl p-8 w-full max-w-md text-center space-y-5">
+      <div class="w-12 h-12 mx-auto rounded-2xl p-0.5 bg-gradient-to-tr from-blue-600 via-cyan-500 to-sky-400 glow-cyan"><div class="w-full h-full rounded-[14px] bg-[#030712] flex items-center justify-center text-cyan-400"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></div></div>
+      <h1 class="text-sm font-bold font-mono tracking-wider text-white uppercase">System in maintenance</h1>
+      <p class="text-xs text-slate-400">The library is temporarily unavailable. Your photos, videos and files are stored safely and return automatically when the timer ends.</p>
+      <div id="maint-clock" class="text-4xl font-mono font-bold text-cyan-300 tracking-widest">--:--:--</div>
+      <div class="text-[10px] font-mono text-slate-400">BACK ONLINE <span id="maint-at" class="text-slate-300"></span></div>
+      <button id="maint-out" class="px-4 py-2.5 rounded-xl text-xs font-mono text-slate-300 hover:text-white bg-slate-900/60 border border-blue-950 hover:border-cyan-500/40 transition-all">Sign out</button>
+    </div>
+  </div>
+  <input type="file" id="rfile" class="hidden" accept="video/mp4,video/quicktime,.mp4,.mov">
+  <div id="toast" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] hidden max-w-[92vw] glass-card rounded-xl px-4 py-2.5 text-xs font-mono text-slate-200 border-cyan-500/30"></div>
+  <div id="pick-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="glass-card w-full max-w-sm rounded-2xl p-5 space-y-4 glow-cyan border-cyan-400/30">
+      <span class="text-xs font-bold font-mono tracking-wider text-white uppercase">Add to…</span>
+      <select id="pick-select" class="w-full bg-[#040816] text-xs text-slate-200 px-3 py-2 rounded-lg border border-blue-950 focus:outline-none focus:border-cyan-400 font-mono"></select>
+      <div class="flex justify-end gap-2 pt-1 text-xs">
+        <button data-act="closePick" class="px-3 py-1.5 text-slate-400 hover:text-white">Cancel</button>
+        <button data-act="confirmPick" class="px-3.5 py-1.5 rounded-lg font-semibold text-black bg-cyan-400 hover:bg-cyan-300 font-mono text-xs">Add</button>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/assets/app.js"></script>
+</body>
+</html>
