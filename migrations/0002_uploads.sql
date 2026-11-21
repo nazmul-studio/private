@@ -1,2 +1,0 @@
-CREATE TABLE upload_sessions (id TEXT PRIMARY KEY, session_hash TEXT NOT NULL, r2_key TEXT NOT NULL UNIQUE, upload_id TEXT NOT NULL, name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL CHECK (size > 0), status TEXT NOT NULL CHECK (status IN ('open','done','aborted','expired','failed')), created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
-CREATE INDEX idx_upload_open ON upload_sessions (status, expires_at);

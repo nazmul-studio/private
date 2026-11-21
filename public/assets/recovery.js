@@ -1,9 +1,0 @@
-const $ = (id) => document.getElementById(id), err = $("err");
-const show = (m) => { err.textContent = m; err.hidden = false; };
-let tok = "", wid, token = location.hash.startsWith("#t=") ? location.hash.slice(3) : "";
-if (token) { history.replaceState(null, "", location.pathname); $("a").hidden = true; $("b").hidden = false; } // opening the link consumes nothing
-window.tsReady = async () => { if (token) return; const k = (await (await fetch("/api/security/config")).json()).turnstileSiteKey; wid = turnstile.render("#ts", { sitekey: k, callback: (t) => { tok = t; } }); };
-const post = async (u, b) => { const r = await fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }); return [r, await r.json().catch(() => ({}))]; };
-$("a").addEventListener("submit", async (e) => { e.preventDefault(); err.hidden = true; if (!tok) return show("Complete the bot check first."); const [, d] = await post("/api/recovery/start", { turnstile: tok }); if (d.message && d.error) show(d.message); else $("ok").textContent = d.message; if (window.turnstile) turnstile.reset(wid); tok = ""; });
-$("b").addEventListener("submit", async (e) => { e.preventDefault(); err.hidden = true; const [r, d] = await post("/api/recovery/verify", { token, secret: $("sc").value }); if (r.ok) { $("b").hidden = true; $("c").hidden = false; } else show(d.message || "Verification failed."); });
-$("c").addEventListener("submit", async (e) => { e.preventDefault(); err.hidden = true; const [r, d] = await post("/api/recovery/activate", { token, secret: $("sc").value, new_password: $("np").value, new_secret: $("ns").value, confirm: $("cf").checked, new_login_email: $("ne").value.trim(), reset_passkeys: $("rp").checked }); if (r.ok) { $("c").hidden = true; $("ok").textContent = "Done. You can sign in with your new credentials."; } else show(d.message || "Reset failed."); });
