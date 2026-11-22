@@ -370,47 +370,14 @@
           <span class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-blue-950 text-cyan-300 border border-blue-800/40" id="map-sessions-chip">0 SESSIONS</span>
         </div>
 
-        <!-- Clean Dark World Map Container with Radar Scanner Animation -->
-        <div class="relative w-full h-48 sm:h-56 rounded-xl bg-[#030614] border border-blue-950/90 overflow-hidden flex items-center justify-center">
-          <!-- Cyber Grid Pattern -->
-          <div class="absolute inset-0 bg-[linear-gradient(to_right,#09132c_1px,transparent_1px),linear-gradient(to_bottom,#09132c_1px,transparent_1px)] bg-[size:2rem_2rem] opacity-40"></div>
-
-          <!-- Radar Sweep Beam Effect -->
-          <div class="absolute w-72 h-72 rounded-full border border-cyan-500/20 pointer-events-none anim-pulse-ring"></div>
-          <div class="absolute w-44 h-44 rounded-full border border-blue-500/30 pointer-events-none"></div>
-
-          <!-- Stylized Dark World Map Outlines -->
-          <svg class="w-full h-full opacity-25 p-4" viewBox="0 0 1000 500" fill="currentColor">
-            <g fill="#38bdf8">
-              <!-- North America -->
-              <path d="M150,120 Q180,90 240,110 Q280,140 260,190 Q220,220 180,240 Q130,190 150,120 Z"/>
-              <path d="M100,80 Q130,60 160,80 Q140,110 110,100 Z"/>
-              <!-- South America -->
-              <path d="M260,260 Q320,270 340,330 Q320,410 280,450 Q250,380 250,320 Z"/>
-              <!-- Europe -->
-              <path d="M480,110 Q540,90 560,130 Q530,170 480,160 Q460,130 480,110 Z"/>
-              <path d="M440,100 Q470,80 480,100 Q450,120 440,100 Z"/>
-              <!-- Africa -->
-              <path d="M470,180 Q560,190 570,270 Q540,360 490,380 Q450,280 470,180 Z"/>
-              <!-- Asia -->
-              <path d="M580,100 Q720,80 820,130 Q840,240 760,290 Q650,260 590,190 Z"/>
-              <!-- Australia -->
-              <path d="M760,340 Q840,330 870,380 Q830,440 760,420 Q740,370 760,340 Z"/>
-            </g>
-          </svg>
-
-          <svg id="map-pins" class="absolute inset-0 w-full h-full p-4 z-20" viewBox="0 0 1000 500"></svg>
-          <!-- Center Standby Badge -->
-          <div id="map-idle" class="relative z-10 flex flex-col items-center justify-center p-3 rounded-xl bg-[#040817]/90 border border-blue-900/60 backdrop-blur-md shadow-2xl space-y-1">
-            <div class="w-8 h-8 rounded-full bg-cyan-950 border border-cyan-500/40 flex items-center justify-center text-cyan-400 anim-float">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <span id="map-idle-title" class="text-xs font-mono font-bold text-slate-200">NO LOCATION DATA</span>
-            <span id="map-idle-sub" class="text-[9px] font-mono text-slate-400">No session location recorded yet</span>
+        <!-- 3D globe: country outlines + real session locations (drawn by /assets/globe.js) -->
+        <div id="globe-host" class="vx-globe relative w-full rounded-xl bg-[#030614] border border-blue-950/90 overflow-hidden" role="img" aria-label="Rotating 3D globe of the Earth showing where active sessions are connecting from">
+          <div id="map-idle" class="vx-gidle hidden">
+            <span id="map-idle-title" class="text-[10px] font-mono font-bold text-slate-200">NO ACTIVE SESSIONS</span>
+            <span id="map-idle-sub" class="text-[9px] font-mono text-slate-400">No active connections</span>
           </div>
         </div>
+        <p class="vx-note">Drag to rotate. Locations come from each session's connection (approximate, city level). Highlighted countries have an active session.</p>
 
         <!-- 3 Minimal Zeroed Indicators -->
         <div class="grid grid-cols-3 gap-2 text-center pt-1">
@@ -438,14 +405,18 @@
             <h3 class="text-xs font-bold font-mono tracking-wider text-white uppercase">24-HOUR TRAFFIC</h3>
             <span class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-slate-900 text-slate-400 border border-slate-800" id="traffic-chip">0 REQ</span>
           </div>
-          <div id="traffic-bars" class="h-28 flex items-end gap-1 pt-4 pb-2 px-1 border-b border-blue-950/70"></div>
-          <div class="flex justify-between text-[9px] font-mono text-slate-400">
+          <div class="vx-chart" role="img" aria-label="Requests per hour for the last 24 hours, coloured from blue (quiet) to red (busiest hour)">
+            <div class="vx-yaxis"><span id="tg-max">0</span><span id="tg-mid">0</span><span>0</span></div>
+            <div id="traffic-bars" class="vx-bars"></div>
+          </div>
+          <div class="vx-xaxis">
             <span id="tl-0">00:00</span>
             <span id="tl-1">06:00</span>
             <span id="tl-2">12:00</span>
             <span id="tl-3">18:00</span>
             <span>NOW</span>
           </div>
+          <div class="vx-legend"><span>QUIET</span><span class="vx-ramp"></span><span>BUSIEST</span><span id="traffic-peak" class="vx-peak"></span></div>
         </div>
 
         <!-- Session Audit Log (Clean Empty State) -->

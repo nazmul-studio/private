@@ -1,4 +1,5 @@
 import { LIMITS, categoryOfName, sizeMessage, planParts, cleanName } from "/assets/limits.js";
+import { createGlobe } from "/assets/globe.js";
 const $ = (i) => document.getElementById(i);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const fmt = (b) => { if (!b) return "0 B"; const k = 1024, u = ["B", "KB", "MB", "GB", "TB"], i = Math.min(4, Math.floor(Math.log(b) / Math.log(k))); return (b / Math.pow(k, i)).toFixed(1) + " " + u[i]; };
@@ -33,7 +34,7 @@ const setBadges = () => {
 
 /* ---------- overview ---------- */
 const ring = (id, pct, len) => { const e = $(id); if (e) e.setAttribute("stroke-dashoffset", (len * (1 - Math.min(100, Math.max(0, pct)) / 100)).toFixed(2)); };
-const proj = (lat, lon) => [((lon + 180) / 360) * 1000, 300 - 3.4 * lat]; // fitted to the stylised map in the card
+let globe = null;
 async function pingMs() { const t = performance.now(); await fetch("/api/security/state", { cache: "no-store" }); return Math.round(performance.now() - t); }
 async function renderOverview() {
   const [ov, ping, sec] = await Promise.all([api("/api/overview").then((r) => r.json()), pingMs().catch(() => 0), fetch("/api/security/state").then((r) => r.json()).catch(() => ({ state: "open" }))]);
@@ -48,11 +49,17 @@ async function renderOverview() {
   g.forEach(([v, p, s], i) => { $(`gauge-${i + 1}-val`).textContent = v; ring(`gauge-${i + 1}-ring`, p, 113.1); $(`gauge-${i + 1}-sub`).textContent = s; });
   const state = sec.state === "lockdown" ? "LOCKDOWN" : "OPEN";
   $("state-label").textContent = state; $("status-chip").textContent = state === "OPEN" ? "READY" : state;
-  // 24-hour traffic
+  // 24-hour traffic: real requests per hour from the database, coloured from blue (quiet) to red (busiest hour in the window)
   const byHour = new Map(ov.traffic.map((r) => [r.hour, r])), hrs = Array.from({ length: 24 }, (_, i) => ov.hour - 23 + i), reqs = hrs.map((h) => (byHour.get(h) || {}).req || 0), max = Math.max(1, ...reqs);
   const lab = (h) => new Date(h * 3600e3).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }).replace(/:\d\d$/, ":00");
-  $("traffic-bars").innerHTML = hrs.map((h, i) => `<div class="flex-1 ${reqs[i] ? "bg-cyan-500/60" : "bg-slate-800/40"} hover:bg-cyan-500 rounded-t h-1 transition-all duration-200" title="${lab(h)}: ${reqs[i]} requests"></div>`).join("");
-  [...$("traffic-bars").children].forEach((e, i) => { e.style.height = Math.max(4, Math.round((reqs[i] / max) * 100)) + "%"; });
+  const heat = (t) => Math.round(215 * (1 - Math.pow(t, 0.8))); // hue: 215 (blue) -> 0 (red)
+  const bars = $("traffic-bars"); bars.innerHTML = hrs.map((h, i) => `<div class="${i === 23 ? "vx-now" : ""}" title="${lab(h)} · ${reqs[i]} requests · ${fmt((byHour.get(h) || {}).bytes || 0)}"></div>`).join("");
+  [...bars.children].forEach((e, i) => { // colours and heights are set from script because the page's CSP blocks inline style attributes
+    const t = reqs[i] / max, hue = heat(t); e.style.height = reqs[i] ? Math.max(6, Math.round(t * 100)) + "%" : "3px";
+    e.style.background = reqs[i] ? `linear-gradient(to top, hsl(${hue} 85% 38%), hsl(${hue} 92% 62%))` : "#1e293b";
+  });
+  $("tg-max").textContent = max > 1 || reqs.some(Boolean) ? max : "1"; $("tg-mid").textContent = Math.round(max / 2);
+  const pk = reqs.indexOf(Math.max(...reqs)); $("traffic-peak").textContent = reqs[pk] ? `Peak ${reqs[pk]} req at ${lab(hrs[pk])}` : "No requests yet";
   [0, 6, 12, 18].forEach((i, k) => { $(`tl-${k}`).textContent = lab(hrs[i]); });
   const totReq = reqs.reduce((a, b) => a + b, 0), totBytes = ov.traffic.reduce((a, r) => a + r.bytes, 0);
   $("traffic-chip").textContent = `${totReq} REQ`; $("map-requests").textContent = totReq; $("map-bandwidth").textContent = fmt(totBytes); $("map-visitors").textContent = ov.signins;
@@ -61,7 +68,8 @@ async function renderOverview() {
   $("sessions-chip").textContent = `${ss.length} ACTIVE`; $("map-sessions-chip").textContent = `${ss.length} SESSIONS`;
   $("sessions-empty").classList.toggle("hidden", ss.length > 0);
   $("sessions-list").innerHTML = ss.map((s) => `<div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[#040817] border border-blue-950/70"><div class="min-w-0"><div class="text-[11px] font-mono text-slate-200 truncate">${esc([s.city, s.country].filter(Boolean).join(", ") || "Unknown location")}</div><div class="text-[9px] font-mono text-slate-400">Active ${ago(s.last_seen)} · since ${new Date(s.created_at).toLocaleString()}</div></div>${s.cur ? '<span class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/50">THIS DEVICE</span>' : `<button data-sdel="${s.id}" class="text-[10px] font-mono px-2 py-1 rounded-lg text-rose-300 bg-rose-950/40 border border-rose-900/50 hover:bg-rose-900/60">Sign out</button>`}</div>`).join("");
-  $("map-pins").innerHTML = geo.map((s) => { const [x, y] = proj(s.lat, s.lon); return `<g class="map-pin"><circle class="radar-pulse-ring" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7" fill="none" stroke="#22d3ee" stroke-width="1.5"/><circle class="pin-core" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="#38bdf8"/><title>${esc([s.city, s.country].filter(Boolean).join(", "))}</title></g>`; }).join("");
+  globe ||= createGlobe($("globe-host"));
+  globe.setPins(geo.map((s) => { const name = [s.city, s.country].filter(Boolean).join(", "); return { lat: s.lat, lon: s.lon, label: name || "Session", title: `${name || "Unknown location"} · active ${ago(s.last_seen)}${s.cur ? " · this device" : ""}`, cur: !!s.cur }; }));
   $("map-idle").classList.toggle("hidden", geo.length > 0);
   $("map-idle-title").textContent = ss.length ? "NO LOCATION DATA" : "NO ACTIVE SESSIONS";
   $("map-idle-sub").textContent = ss.length ? `${ss.length} active ${ss.length === 1 ? "session" : "sessions"} · location unavailable` : "No active connections";

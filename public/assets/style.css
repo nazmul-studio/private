@@ -2313,3 +2313,23 @@ body {
 .vx-qx{flex-shrink:0;width:20px;height:20px;padding:0;line-height:1;border-radius:6px;border:1px solid rgba(244,63,94,.4);background:rgba(76,5,25,.4);color:#fda4af;cursor:pointer}
 .vx-note{font:10px 'JetBrains Mono',monospace;color:#94a3b8}
 .vx-desc{padding:6px 16px;max-height:4.5rem;overflow:auto;border-top:1px solid rgba(23,37,84,.6);background:rgba(0,0,0,.5);font:11px/1.45 'JetBrains Mono',monospace;color:#cbd5e1}
+
+/* ---- Overview: coloured 24-hour traffic chart and the 3D globe (plain CSS, no Tailwind rebuild needed) ---- */
+.vx-chart{display:flex;gap:6px;height:9.5rem;padding-top:6px}
+.vx-yaxis{display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;width:2.2rem;flex-shrink:0;padding-bottom:1px;font:9px 'JetBrains Mono',monospace;color:#94a3b8}
+.vx-bars{flex:1;min-width:0;display:flex;align-items:flex-end;gap:3px;border-bottom:1px solid rgba(30,58,138,.7);background:linear-gradient(to bottom,rgba(56,189,248,.16) 1px,transparent 1px) 0 0/100% 50%,linear-gradient(to bottom,rgba(56,189,248,.16) 1px,transparent 1px) 0 100%/100% 50%;background-repeat:no-repeat}
+.vx-bars>div{flex:1;min-width:0;border-radius:4px 4px 0 0;transition:height .5s ease,filter .15s;cursor:default}
+.vx-bars>div:hover{filter:brightness(1.3) saturate(1.2)}
+.vx-bars>div.vx-now{outline:1.5px solid rgba(255,255,255,.75);outline-offset:1px}
+.vx-xaxis{display:flex;justify-content:space-between;padding-left:2.5rem;font:9px 'JetBrains Mono',monospace;color:#94a3b8}
+.vx-legend{display:flex;align-items:center;gap:8px;font:9px 'JetBrains Mono',monospace;color:#94a3b8}
+.vx-ramp{width:7rem;height:6px;border-radius:9999px;background:linear-gradient(to right,hsl(215 90% 55%),hsl(180 90% 50%),hsl(120 80% 50%),hsl(55 95% 55%),hsl(25 95% 55%),hsl(0 90% 55%))}
+.vx-peak{margin-left:auto;color:#cbd5e1}
+.vx-globe{height:19rem;touch-action:pan-y}
+@media(min-width:640px){.vx-globe{height:23rem}}
+.vx-gcanvas{position:absolute;inset:0;width:100%;height:100%;cursor:grab;touch-action:pan-y}
+.vx-gcanvas.vx-grab{cursor:grabbing}
+.vx-gtip{position:absolute;z-index:6;transform:translate(-50%,-100%);padding:3px 8px;border-radius:8px;background:rgba(4,8,23,.94);border:1px solid rgba(56,189,248,.45);color:#e2e8f0;font:10px 'JetBrains Mono',monospace;white-space:nowrap;pointer-events:none}
+.vx-gtip.hidden{display:none}
+.vx-gidle{position:absolute;left:10px;bottom:10px;z-index:5;display:flex;flex-direction:column;gap:2px;padding:6px 10px;border-radius:10px;background:rgba(4,8,23,.88);border:1px solid rgba(30,58,138,.7);pointer-events:none}
+.vx-gidle.hidden{display:none}
