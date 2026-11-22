@@ -152,7 +152,12 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     const s = await st("state"); const blk = blocked(s); if (blk) return blk;
     const b = await read(req), cid = String(b.challenge ?? "");
     const c = await env.DB.prepare("SELECT code_hash, expires_at, attempts FROM login_challenges WHERE id=?").bind(cid).first<{ code_hash: string; expires_at: number; attempts: number }>();
-    if (challengeState(c ? { expires: c.expires_at, attempts: c.attempts } : null, tn) !== "valid") { if (c) await env.DB.prepare("DELETE FROM login_challenges WHERE id=?").bind(cid).run(); return json({ error: "expired", message: "That code has expired. Sign in again." }, 401); }
+    const cs = challengeState(c ? { expires: c.expires_at, attempts: c.attempts } : null, tn);
+    if (cs !== "valid") {
+      if (c) await env.DB.prepare("DELETE FROM login_challenges WHERE id=?").bind(cid).run();
+      if (cs === "locked") { const r = await bad(); if (r.status === 423) return r; } // trying again after the 5 allowed guesses counts as a failed attempt (it used to be free)
+      return json({ error: "expired", message: "That code has expired. Sign in again." }, 401);
+    }
     if (!same(await sha256(cid + String(b.code ?? "")), c!.code_hash)) { await env.DB.prepare("UPDATE login_challenges SET attempts=attempts+1 WHERE id=?").bind(cid).run(); return bad(); }
     await env.DB.prepare("DELETE FROM login_challenges WHERE id=?").bind(cid).run(); // single use
     await st("ok"); await audit("login_ok");
