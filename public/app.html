@@ -178,7 +178,7 @@
         <!-- Search Bar -->
         <div class="relative w-44 sm:w-64">
           <svg class="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-          <input type="text" id="searchInput" placeholder="Search..." class="w-full bg-[#040816] text-xs text-slate-200 placeholder-slate-600 pl-8 pr-3 py-1.5 rounded-lg border border-blue-950 focus:outline-none focus:border-cyan-400 font-mono">
+          <input type="text" id="searchInput" placeholder="Search or describe a photo…" class="w-full bg-[#040816] text-xs text-slate-200 placeholder-slate-600 pl-8 pr-3 py-1.5 rounded-lg border border-blue-950 focus:outline-none focus:border-cyan-400 font-mono">
         </div>
       </div>
 
@@ -478,10 +478,11 @@
           <h2 class="text-sm font-bold font-mono tracking-wider text-white uppercase">FILES</h2>
           <span id="files-total-badge" class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-950/60 text-amber-400 border border-amber-500/30">0</span>
         </div>
+        <div class="flex items-center gap-2"><button data-act="toggleSelect" class="js-selbtn px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300 hover:text-white bg-slate-900/60 border border-blue-950 hover:border-cyan-500/40 transition-all">Select</button>
         <button data-pick="1" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-black bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.3)] transition-all cursor-pointer">
           <svg class="w-3.5 h-3.5 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
           <span>Upload File</span>
-        </button>
+        </button></div>
       </div>
 
       <!-- Short Category Filter Pills -->
@@ -530,12 +531,21 @@
             <span class="text-[10px] font-mono text-cyan-400 px-2 py-0.5 rounded bg-blue-950/80 border border-cyan-500/30" id="media-count-badge">0</span>
           </div>
 
+          <div class="flex items-center gap-2 flex-wrap justify-end">
+          <div id="trash-actions" class="hidden"><div class="flex items-center gap-2">
+            <button data-act="restoreAll" class="px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300 hover:text-white bg-slate-900/60 border border-blue-950 hover:border-cyan-500/40 transition-all">Restore all</button>
+            <button data-act="emptyTrash" class="px-3 py-1.5 rounded-lg text-xs font-mono text-rose-300 bg-rose-950/40 border border-rose-900/50 hover:bg-rose-900/60 transition-all">Empty Trash</button>
+          </div></div>
+          <button data-act="toggleSelect" class="js-selbtn px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300 hover:text-white bg-slate-900/60 border border-blue-950 hover:border-cyan-500/40 transition-all">Select</button>
           <!-- Density Switch -->
           <div class="flex items-center p-0.5 rounded-lg bg-[#040816] border border-blue-950 text-[10px] font-mono">
             <button data-grid="dense" id="btn-dense" class="px-2 py-1 rounded bg-blue-600/80 text-white">Compact</button>
             <button data-grid="normal" id="btn-normal" class="px-2 py-1 rounded text-slate-400 hover:text-white">Medium</button>
           </div>
+          </div>
         </div>
+
+        <p id="search-note" class="vx-note hidden"></p>
 
         <!-- High Density Serial Grid (Small square tiles, many per row) -->
         <div id="media-grid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2">
@@ -578,10 +588,10 @@
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
         </button>
 
-        <button data-act="lbAdd" id="lb-add-btn" title="lbAdd" class="hidden p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-cyan-400 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></button>
-        <button data-act="lbRemove" id="lb-rm-btn" title="lbRemove" class="hidden p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-amber-400 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/></svg></button>
-        <button data-act="lbRestore" id="lb-restore-btn" title="lbRestore" class="hidden p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-emerald-400 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></button>
-        <button data-act="lbDelete" id="lb-del-btn" title="lbDelete" class="hidden p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-rose-400 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+        <button data-act="lbAdd" id="lb-add-btn" title="Add to album or folder" aria-label="Add to album or folder" class="hidden p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-cyan-400 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></button>
+        <button data-act="lbRemove" id="lb-rm-btn" title="Remove from this collection" aria-label="Remove from this collection" class="hidden p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-amber-400 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/></svg></button>
+        <button data-act="lbRestore" id="lb-restore-btn" title="Restore" aria-label="Restore" class="hidden p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-emerald-400 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></button>
+        <button data-act="lbDelete" id="lb-del-btn" title="Move to Trash" aria-label="Move to Trash" class="hidden p-2 rounded-lg bg-slate-900 text-rose-300 hover:text-rose-200 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
         <a id="lb-download-btn" href="#" download class="p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-cyan-400 transition-colors">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
         </a>
@@ -604,6 +614,8 @@
         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
       </button>
     </div>
+
+    <div id="lb-desc" class="vx-desc hidden"></div>
 
     <div class="h-10 px-6 border-t border-blue-950/80 bg-black/60 flex items-center justify-between text-[10px] font-mono text-slate-400">
       <span id="lb-index-counter"></span>
@@ -631,6 +643,9 @@
           <p class="text-[10px] font-mono text-slate-500">Photos, PDFs &amp; files up to 50 MB · videos up to 350 MB</p>
         </label>
       </div>
+
+      <p id="upload-target" class="vx-note hidden"></p>
+      <div id="upload-queue" class="vx-queue hidden"></div>
 
       <div id="upload-progress-container" class="hidden space-y-1.5">
         <div class="flex justify-between text-[10px] font-mono">
@@ -662,6 +677,18 @@
     </div>
   </div>
   <input type="file" id="rfile" class="hidden" accept="video/mp4,video/quicktime,.mp4,.mov">
+  <div id="sel-bar" class="vx-bar hidden">
+    <span id="sel-count" class="text-[11px] font-mono text-slate-200 px-1">0 selected</span>
+    <button data-act="selAll" class="px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300 hover:text-white bg-slate-900/60 border border-blue-950 hover:border-cyan-500/40 transition-all">All</button>
+    <button data-act="selNone" class="px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300 hover:text-white bg-slate-900/60 border border-blue-950 hover:border-cyan-500/40 transition-all">Clear</button>
+    <button data-act="selFav" id="sel-fav" class="px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300 hover:text-white bg-slate-900/60 border border-blue-950 hover:border-cyan-500/40 transition-all">Favorite</button>
+    <button data-act="selAdd" id="sel-add" class="px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300 hover:text-white bg-slate-900/60 border border-blue-950 hover:border-cyan-500/40 transition-all">Add to…</button>
+    <button data-act="selRemove" id="sel-rm" class="px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300 hover:text-white bg-slate-900/60 border border-blue-950 hover:border-cyan-500/40 transition-all hidden">Remove</button>
+    <button data-act="selRestore" id="sel-restore" class="px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300 hover:text-white bg-slate-900/60 border border-blue-950 hover:border-cyan-500/40 transition-all hidden">Restore</button>
+    <button data-act="selTrash" id="sel-trash" class="px-3 py-1.5 rounded-lg text-xs font-mono text-rose-300 bg-rose-950/40 border border-rose-900/50 hover:bg-rose-900/60 transition-all">Trash</button>
+    <button data-act="selDelete" id="sel-del" class="px-3 py-1.5 rounded-lg text-xs font-mono text-rose-300 bg-rose-950/40 border border-rose-900/50 hover:bg-rose-900/60 transition-all hidden">Delete forever</button>
+    <button data-act="toggleSelect" class="px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300 hover:text-white bg-slate-900/60 border border-blue-950 hover:border-cyan-500/40 transition-all">Done</button>
+  </div>
   <div id="toast" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] hidden max-w-[92vw] glass-card rounded-xl px-4 py-2.5 text-xs font-mono text-slate-200 border-cyan-500/30"></div>
   <div id="pick-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
     <div class="glass-card w-full max-w-sm rounded-2xl p-5 space-y-4 glow-cyan border-cyan-400/30">

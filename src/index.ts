@@ -5,9 +5,11 @@ import { isoBase64URL } from "@simplewebauthn/server/helpers";
 import { OTP_TTL, REC_TTL, challengeState, tokenState } from "./policy.js";
 import { LIMITS, PART, FILE_MIME, categoryOfName, sniffFile, ext, sizeMessage, planParts, validParts, cleanName } from "../public/assets/limits.js";
 import { rand, sha256, hmacHex, hashSecret, verifySecret, same } from "./crypto";
+import { SEARCH_MIN, searchTerms, escapeLike, keywordScore, unit, packVec, dotPacked, rank, cleanIds } from "./search.js";
 export { SecurityState } from "./security";
 
-interface Env { ASSETS: Fetcher; MEDIA_BUCKET: R2Bucket; DB: D1Database; SECURITY: DurableObjectNamespace; SETUP_TOKEN?: string; AUDIT_SALT?: string; TOTAL_CAP_BYTES: string; R2_ACCOUNT_ID: string; R2_BUCKET: string; R2_ACCESS_KEY_ID: string; R2_SECRET_ACCESS_KEY: string; BREVO_API_KEY: string; SENDER_EMAIL: string; SENDER_NAME: string; LOGIN_EMAIL?: string; SECURITY_EMAIL?: string; TURNSTILE_SECRET?: string; TURNSTILE_SITE_KEY: string }
+type AiBinding = { run(model: string, input: unknown): Promise<unknown> };
+interface Env { AI?: AiBinding; ASSETS: Fetcher; MEDIA_BUCKET: R2Bucket; DB: D1Database; SECURITY: DurableObjectNamespace; SETUP_TOKEN?: string; AUDIT_SALT?: string; TOTAL_CAP_BYTES: string; R2_ACCOUNT_ID: string; R2_BUCKET: string; R2_ACCESS_KEY_ID: string; R2_SECRET_ACCESS_KEY: string; BREVO_API_KEY: string; SENDER_EMAIL: string; SENDER_NAME: string; LOGIN_EMAIL?: string; SECURITY_EMAIL?: string; TURNSTILE_SECRET?: string; TURNSTILE_SITE_KEY: string }
 type Up = { id: string; r2_key: string; upload_id: string; name: string; mime: string; size: number };
 type Sec = { fails: number; wait: number; held: boolean; holdUntil: number; lockdown: boolean };
 type Row = { id: string; r2_key: string; name: string; mime: string; size: number; created_at: number; deleted_at: number | null };
@@ -31,12 +33,37 @@ function sniff(b: Uint8Array): string | null {
   return null;
 }
 
-async function purgeMedia(env: Env, r: Row) {
-  await env.MEDIA_BUCKET.delete([r.r2_key, r.r2_key + ".thumb"]);
-  await env.DB.batch([env.DB.prepare("DELETE FROM collection_items WHERE media_id=?").bind(r.id), env.DB.prepare("DELETE FROM media_metadata WHERE id=?").bind(r.id)]);
+async function purgeMany(env: Env, rows: { id: string; r2_key: string }[]) { // permanent delete of up to MAX_BULK-ish (80) files: objects first, then every database row that points at them
+  if (!rows.length) return;
+  const ids = rows.map((r) => r.id), q = ids.map(() => "?").join(",");
+  await env.MEDIA_BUCKET.delete(rows.flatMap((r) => [r.r2_key, r.r2_key + ".thumb"]));
+  await env.DB.batch([env.DB.prepare(`DELETE FROM collection_items WHERE media_id IN (${q})`).bind(...ids), env.DB.prepare(`DELETE FROM media_vectors WHERE id IN (${q})`).bind(...ids), env.DB.prepare(`DELETE FROM media_metadata WHERE id IN (${q})`).bind(...ids)]);
 }
+const purgeMedia = (env: Env, r: Row) => purgeMany(env, [r]);
 
-async function route(req: Request, env: Env): Promise<Response> {
+// ---- AI photo search: Workers AI describes the small thumbnail, the description is embedded, search compares meanings ----
+const CAPTION_MODEL = "@cf/moondream/moondream3.1-9B-A2B", EMBED_MODEL = "@cf/baai/bge-m3"; // bge-m3 is multilingual, so Bangla queries match English descriptions
+const runAI = (env: Env, model: string, input: unknown) => { if (!env.AI) throw new Error("ai_unavailable"); return env.AI.run(model, input) as Promise<Record<string, any>>; };
+const b64 = (buf: ArrayBuffer) => { const u = new Uint8Array(buf); let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); };
+async function embed(env: Env, text: string): Promise<number[]> {
+  const r = await runAI(env, EMBED_MODEL, { text: [text] }), d = r?.data ?? r?.embeddings, v = Array.isArray(d?.[0]) ? d[0] : d; // tolerate both response shapes
+  if (!Array.isArray(v) || !v.length || !v.every((x: unknown) => Number.isFinite(x))) throw new Error("bad_embedding");
+  return v;
+}
+async function describe(env: Env, jpeg: ArrayBuffer): Promise<string> {
+  const r = await runAI(env, CAPTION_MODEL, { task: "caption", caption_length: "long", image: "data:image/jpeg;base64," + b64(jpeg), max_tokens: 300 });
+  const t = String(r?.caption ?? r?.answer ?? "").replace(/\s+/g, " ").trim().slice(0, 1200);
+  if (!t) throw new Error("empty_description");
+  return t;
+}
+async function indexMedia(env: Env, id: string, jpeg: ArrayBuffer) { // jpeg = the thumbnail (at most 300 KB), never the original file
+  const d = await describe(env, jpeg), vec = packVec(await embed(env, d));
+  await env.DB.batch([env.DB.prepare("UPDATE media_metadata SET description=?, indexed_at=? WHERE id=?").bind(d, Date.now(), id), env.DB.prepare("INSERT OR REPLACE INTO media_vectors(id,vec) VALUES(?,?)").bind(id, vec)]);
+}
+const markFailed = (env: Env, id: string) => env.DB.prepare("UPDATE media_metadata SET indexed_at=-1 WHERE id=?").bind(id).run().catch(() => {});
+const scopeOf = (k: string) => ({ like: k === "image" ? "image/%" : k === "video" ? "video/%" : k === "pdf" ? "application/pdf" : "%", cond: k === "trash" ? "deleted_at IS NOT NULL" : "deleted_at IS NULL" + (k === "favorites" ? " AND favorite=1" : "") });
+
+async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(req.url), p = url.pathname, m = req.method;
   if (!p.startsWith("/api/")) return env.ASSETS.fetch(req);
   if (m !== "GET" && req.headers.get("Origin") !== url.origin) return json({ error: "bad_origin" }, 403);
@@ -223,9 +250,84 @@ async function route(req: Request, env: Env): Promise<Response> {
     return json({ dbMs, hour: hourNow, traffic: traffic.results, sessions: sessions.results, failed: failed!.n, signins: signins!.n, stats, used: await used(), cap: Number(env.TOTAL_CAP_BYTES) });
   }
   if (p === "/api/media" && m === "GET") {
-    const k = url.searchParams.get("kind") ?? "all", like = k === "image" ? "image/%" : k === "video" ? "video/%" : k === "pdf" ? "application/pdf" : "%";
-    const cond = k === "trash" ? "deleted_at IS NOT NULL" : "deleted_at IS NULL" + (k === "favorites" ? " AND favorite=1" : "");
-    return json((await env.DB.prepare(`SELECT id,name,mime,size,created_at,favorite,has_thumb FROM media_metadata WHERE ${cond} AND mime LIKE ? ORDER BY created_at DESC LIMIT 200 OFFSET ?`).bind(like, Math.max(0, Number(url.searchParams.get("offset")) || 0)).all()).results);
+    const { like, cond } = scopeOf(url.searchParams.get("kind") ?? "all");
+    return json((await env.DB.prepare(`SELECT id,name,mime,size,created_at,favorite,has_thumb,deleted_at FROM media_metadata WHERE ${cond} AND mime LIKE ? ORDER BY created_at DESC LIMIT 200 OFFSET ?`).bind(like, Math.max(0, Number(url.searchParams.get("offset")) || 0)).all()).results);
+  }
+  if (p === "/api/search" && m === "GET") { // best matches first: filename/description words plus meaning (embeddings, so Bangla finds English descriptions)
+    const q = (url.searchParams.get("q") ?? "").trim().slice(0, 300), { like, cond } = scopeOf(url.searchParams.get("kind") ?? "all");
+    const pendingN = async () => (await env.DB.prepare("SELECT COUNT(*) n FROM media_metadata WHERE has_thumb=1 AND indexed_at IS NULL AND deleted_at IS NULL").first<{ n: number }>())!.n;
+    if (!q) return json({ results: [], semantic: false, pending: await pendingN() });
+    const colQ = url.searchParams.get("collection") ?? "", col = /^[\w-]{1,64}$/.test(colQ) ? colQ : null;
+    const colSql = col ? " AND mm.id IN (SELECT media_id FROM collection_items WHERE collection_id=?)" : "", colBind = col ? [col] : [];
+    const hits = new Map<string, { sem: number; kw: number }>(), hit = (id: string) => { let h = hits.get(id); if (!h) hits.set(id, (h = { sem: 0, kw: 0 })); return h; };
+    const terms = searchTerms(q);
+    if (terms.length) {
+      const any = terms.map(() => "(mm.name LIKE ? ESCAPE '\\' OR mm.description LIKE ? ESCAPE '\\')").join(" OR "), pats = terms.flatMap((t) => { const x = `%${escapeLike(t)}%`; return [x, x]; });
+      const rows = (await env.DB.prepare(`SELECT mm.id, mm.name, mm.description FROM media_metadata mm WHERE ${cond} AND mm.mime LIKE ?${colSql} AND (${any}) LIMIT 300`).bind(like, ...colBind, ...pats).all<{ id: string; name: string; description: string | null }>()).results;
+      for (const r of rows) hit(r.id).kw = keywordScore(terms, r.name, r.description);
+    }
+    let semantic = false;
+    if (env.AI) {
+      try {
+        const qv = unit(await embed(env, q));
+        for (let after = "", i = 0; i < 10; i++) { // 2000 vectors per read, at most 20000 photos
+          const rows = (await env.DB.prepare(`SELECT v.id, v.vec FROM media_vectors v JOIN media_metadata mm ON mm.id=v.id WHERE ${cond} AND mm.mime LIKE ?${colSql} AND v.id>? ORDER BY v.id LIMIT 2000`).bind(like, ...colBind, after).all<{ id: string; vec: string }>()).results;
+          for (const r of rows) { const s = dotPacked(qv, r.vec); if (s >= SEARCH_MIN) hit(r.id).sem = s; }
+          if (rows.length < 2000) break;
+          after = rows[rows.length - 1].id;
+        }
+        semantic = true;
+      } catch (e) { console.error("search_ai_failed", (e as Error).message); } // falls back to word matching
+    }
+    const top = rank(hits, 80);
+    const found = top.length ? (await env.DB.prepare(`SELECT id,name,mime,size,created_at,favorite,has_thumb,deleted_at,description FROM media_metadata WHERE id IN (${top.map(() => "?").join(",")})`).bind(...top.map((t) => t.id)).all<{ id: string }>()).results : [];
+    const byId = new Map(found.map((r) => [r.id, r]));
+    return json({ results: top.flatMap((t) => { const r = byId.get(t.id); return r ? [{ ...r, score: Math.round(t.score * 100) / 100 }] : []; }), semantic, pending: await pendingN() });
+  }
+  if (p === "/api/search/status" && m === "GET") {
+    const s = await env.DB.prepare("SELECT COALESCE(SUM(indexed_at>0),0) done_n, COALESCE(SUM(indexed_at IS NULL AND has_thumb=1 AND deleted_at IS NULL),0) wait_n, COALESCE(SUM(indexed_at=-1),0) fail_n FROM media_metadata").first<{ done_n: number; wait_n: number; fail_n: number }>(); // (INDEXED is an SQL keyword, so it is not used as a column name)
+    return json({ ai: !!env.AI, indexed: s?.done_n ?? 0, pending: s?.wait_n ?? 0, failed: s?.fail_n ?? 0 });
+  }
+  if (p === "/api/search/reindex" && m === "POST") { // analyses a few not-yet-described photos per call; the page keeps calling until none are left
+    if (!env.AI) return json({ error: "ai_unavailable", message: "The AI binding is missing. Add the \"ai\" binding to wrangler.jsonc and deploy." }, 503);
+    if ((await read(req)).retry === true) await env.DB.prepare("UPDATE media_metadata SET indexed_at=NULL WHERE indexed_at=-1").run();
+    const rows = (await env.DB.prepare("SELECT id, r2_key FROM media_metadata WHERE has_thumb=1 AND indexed_at IS NULL AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 3").all<{ id: string; r2_key: string }>()).results;
+    const res = await Promise.allSettled(rows.map(async (r) => { const o = await env.MEDIA_BUCKET.get(r.r2_key + ".thumb"); if (!o) throw new Error("no_thumbnail"); await indexMedia(env, r.id, await o.arrayBuffer()); }));
+    let done = 0, failed = 0;
+    for (const [i, x] of res.entries()) { if (x.status === "fulfilled") done++; else { failed++; console.error("index_failed", String(x.reason?.message ?? x.reason)); await markFailed(env, rows[i].id); } }
+    const left = (await env.DB.prepare("SELECT COUNT(*) n FROM media_metadata WHERE has_thumb=1 AND indexed_at IS NULL AND deleted_at IS NULL").first<{ n: number }>())!.n;
+    return json({ done, failed, left });
+  }
+  if (p === "/api/media/bulk" && m === "POST") { // several files at once; the page sends at most MAX_BULK ids per call
+    const b = await read(req), ids = cleanIds(b.ids), act = String(b.action ?? "");
+    if (!ids.length) return json({ error: "invalid", message: "Nothing is selected." }, 400);
+    const q = ids.map(() => "?").join(",");
+    if (act === "trash") await env.DB.prepare(`UPDATE media_metadata SET deleted_at=? WHERE deleted_at IS NULL AND id IN (${q})`).bind(now, ...ids).run();
+    else if (act === "restore") await env.DB.prepare(`UPDATE media_metadata SET deleted_at=NULL WHERE id IN (${q})`).bind(...ids).run();
+    else if (act === "favorite" || act === "unfavorite") await env.DB.prepare(`UPDATE media_metadata SET favorite=? WHERE id IN (${q})`).bind(act === "favorite" ? 1 : 0, ...ids).run();
+    else if (act === "delete") { // permanent, and only for files that are already in Trash
+      const rows = (await env.DB.prepare(`SELECT id, r2_key FROM media_metadata WHERE deleted_at IS NOT NULL AND id IN (${q})`).bind(...ids).all<{ id: string; r2_key: string }>()).results;
+      await purgeMany(env, rows);
+    } else if (act === "add" || act === "remove") {
+      const col = await env.DB.prepare("SELECT id, kind FROM collections WHERE id=?").bind(String(b.collection ?? "")).first<{ id: string; kind: string }>();
+      if (!col) return json({ error: "not_found", message: "That album or folder no longer exists." }, 404);
+      if (act === "remove") await env.DB.prepare(`DELETE FROM collection_items WHERE collection_id=? AND media_id IN (${q})`).bind(col.id, ...ids).run();
+      else {
+        if (col.kind === "folder") await env.DB.prepare(`DELETE FROM collection_items WHERE media_id IN (${q}) AND collection_id IN (SELECT id FROM collections WHERE kind='folder')`).bind(...ids).run(); // a file lives in one folder only
+        await env.DB.prepare(`INSERT OR IGNORE INTO collection_items(collection_id,media_id) SELECT ?, id FROM media_metadata WHERE id IN (${q})`).bind(col.id, ...ids).run();
+      }
+    } else return json({ error: "invalid", message: "Unknown action." }, 400);
+    return json({ ok: true, n: ids.length });
+  }
+  if (p === "/api/trash/restore" && m === "POST") { await env.DB.prepare("UPDATE media_metadata SET deleted_at=NULL WHERE deleted_at IS NOT NULL").run(); return json({ ok: true }); }
+  if (p === "/api/trash/empty" && m === "POST") { // removes up to 400 files per call; the page repeats while "left" is above 0
+    let deleted = 0;
+    for (let i = 0; i < 5; i++) {
+      const rows = (await env.DB.prepare("SELECT id, r2_key FROM media_metadata WHERE deleted_at IS NOT NULL LIMIT 80").all<{ id: string; r2_key: string }>()).results;
+      if (!rows.length) break;
+      await purgeMany(env, rows); deleted += rows.length;
+    }
+    return json({ deleted, left: (await env.DB.prepare("SELECT COUNT(*) n FROM media_metadata WHERE deleted_at IS NOT NULL").first<{ n: number }>())!.n });
   }
   const tm = /^\/api\/media\/([\w-]+)\/thumb$/.exec(p);
   if (tm && m === "POST") { // small JPEG made in the browser
@@ -236,6 +338,7 @@ async function route(req: Request, env: Env): Promise<Response> {
     if (!row || buf.byteLength !== len || !(hd[0] === 0xff && hd[1] === 0xd8 && hd[2] === 0xff)) return json({ error: "invalid" }, 400);
     await env.MEDIA_BUCKET.put(row.r2_key + ".thumb", buf, { httpMetadata: { contentType: "image/jpeg" } });
     await env.DB.prepare("UPDATE media_metadata SET has_thumb=1 WHERE id=?").bind(tm[1]).run();
+    if (env.AI) ctx.waitUntil(indexMedia(env, tm[1], buf).catch(async (e) => { console.error("index_failed", (e as Error).message); await markFailed(env, tm[1]); })); // describe it in the background; the upload does not wait
     return json({ ok: true }, 201);
   }
   // albums (many-to-many) and folders (a file lives in at most one)
@@ -381,7 +484,7 @@ export default {
     await env.DB.prepare("DELETE FROM active_sessions WHERE created_at<? OR last_seen<?").bind(Date.now() - ABS, Date.now() - IDLE).run();
     await env.DB.prepare("DELETE FROM traffic_hourly WHERE hour<?").bind(Math.floor(Date.now() / 3600e3) - 72).run();
   },
-  async fetch(req: Request, env: Env): Promise<Response> {
-    try { return secure(await route(req, env), env); } catch (e) { console.error("route_error", (e as Error).message); return secure(json({ error: "server_error", message: "Something went wrong. Try again." }, 500), env); }
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    try { return secure(await route(req, env, ctx), env); } catch (e) { console.error("route_error", (e as Error).message); return secure(json({ error: "server_error", message: "Something went wrong. Try again." }, 500), env); }
   },
 };

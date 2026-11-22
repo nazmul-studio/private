@@ -2283,3 +2283,33 @@ body {
 
 /* map pins: pulse around their own centre */
 .map-pin .radar-pulse-ring{transform-box:fill-box;transform-origin:center}
+
+/* ---- selection, tile buttons, upload list, search note (added as plain CSS, so no Tailwind rebuild is needed) ---- */
+.vx-chk{position:absolute;top:5px;left:5px;z-index:5;width:22px;height:22px;padding:0;border-radius:9999px;border:1.5px solid rgba(186,230,253,.9);background:rgba(2,6,23,.6);color:#020617;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.vx-chk svg{width:13px;height:13px;opacity:0}
+.vx-rowchk{position:static;display:none;flex-shrink:0}
+[data-sel-mode="1"] .vx-rowchk{display:flex}
+.vx-sel .vx-chk{background:#22d3ee;border-color:#22d3ee}
+.vx-sel .vx-chk svg{opacity:1}
+.vx-sel{outline:2px solid #22d3ee;outline-offset:-2px}
+.vx-badges{position:absolute;top:5px;right:5px;z-index:4;display:flex;gap:4px;align-items:center}
+.vx-acts{position:absolute;right:4px;bottom:4px;z-index:5;display:flex;gap:4px}
+[data-sel-mode="1"] .vx-acts{display:none}
+.vx-act{width:22px;height:22px;padding:0;border-radius:7px;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,.72);border:1px solid rgba(56,189,248,.35);color:#e2e8f0;cursor:pointer}
+.vx-act:hover{background:rgba(8,47,73,.95);color:#fff}
+.vx-act.vx-danger{border-color:rgba(244,63,94,.55);color:#fda4af}
+.vx-act.vx-danger:hover{background:rgba(76,5,25,.95);color:#fff}
+.vx-days{position:absolute;left:5px;bottom:5px;z-index:4;padding:1px 5px;border-radius:6px;background:rgba(2,6,23,.75);border:1px solid rgba(251,191,36,.4);color:#fcd34d;font:600 9px 'JetBrains Mono',monospace}
+.vx-name{position:absolute;left:5px;bottom:5px;z-index:3;max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:9px 'JetBrains Mono',monospace;color:#cbd5e1;opacity:0;transition:opacity .15s;pointer-events:none}
+.vx-tile:hover .vx-name{opacity:1}
+.vx-bar{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:45;display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;max-width:94vw;padding:8px 10px;border-radius:14px;background:rgba(6,12,28,.96);border:1px solid rgba(56,189,248,.35);box-shadow:0 10px 40px rgba(0,0,0,.6)}
+.vx-bar.hidden{display:none}
+.vx-bar button[disabled]{opacity:.4;pointer-events:none}
+.vx-queue{max-height:11rem;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.vx-queue.hidden{display:none}
+.vx-qrow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:#040816;border:1px solid #0b1a3a;font:10px 'JetBrains Mono',monospace;color:#cbd5e1}
+.vx-qname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vx-qsize{flex-shrink:0;color:#94a3b8}
+.vx-qx{flex-shrink:0;width:20px;height:20px;padding:0;line-height:1;border-radius:6px;border:1px solid rgba(244,63,94,.4);background:rgba(76,5,25,.4);color:#fda4af;cursor:pointer}
+.vx-note{font:10px 'JetBrains Mono',monospace;color:#94a3b8}
+.vx-desc{padding:6px 16px;max-height:4.5rem;overflow:auto;border-top:1px solid rgba(23,37,84,.6);background:rgba(0,0,0,.5);font:11px/1.45 'JetBrains Mono',monospace;color:#cbd5e1}

@@ -4,6 +4,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+  "ai": { "binding": "AI" },
   "r2_buckets": [{ "binding": "MEDIA_BUCKET", "bucket_name": "private" }],
   "d1_databases": [{ "binding": "DB", "database_name": "private", "database_id": "f5053d55-c0d1-4326-9c58-b3a9cba322ae" }],
   "durable_objects": { "bindings": [{ "name": "SECURITY", "class_name": "SecurityState" }] },
