@@ -292,7 +292,7 @@ async function route(req: Request, env: Env): Promise<Response> {
     if (len > LIMITS[cat]) return json({ error: "too_large", message: sizeMessage(name, len, cat) }, 413);
     if ((await used()) + (await reserved()) + len > Number(env.TOTAL_CAP_BYTES)) return json({ error: "storage_full", message: "Not enough storage left under your configured limit." }, 413);
     const buf = await req.arrayBuffer(), head = new Uint8Array(buf, 0, Math.min(512, buf.byteLength));
-    const sn = sniff(head.subarray(0, 16)), mime = cat === "file" ? (sniffFile(name, head) ? FILE_MIME[ext(name)] : null) : sn && !sn.startsWith("video/") ? sn : null;
+    const sn = sniff(head.subarray(0, 16)), mime = cat === "file" ? (sniffFile(name, head) ? FILE_MIME[ext(name) as keyof typeof FILE_MIME] : null) : sn && !sn.startsWith("video/") ? sn : null;
     if (buf.byteLength !== len || !mime) return json({ error: "type", message: "This file's contents don't match its type." }, 415);
     const id = crypto.randomUUID(), key = crypto.randomUUID();
     await env.MEDIA_BUCKET.put(key, buf, { httpMetadata: { contentType: mime } });
