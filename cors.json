@@ -1,1 +1,17 @@
-{ "rules": [ { "allowed": { "origins": ["https://private.piclibrary.workers.dev"], "methods": ["PUT"], "headers": ["content-type"] }, "exposeHeaders": ["ETag"], "maxAgeSeconds": 3600 } ] }
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": [
+          "https://private.piclibrary.workers.dev",
+          "http://localhost:8787",
+          "http://127.0.0.1:8787"
+        ],
+        "methods": ["PUT"],
+        "headers": ["*"]
+      },
+      "exposeHeaders": ["ETag"],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}
