@@ -93,11 +93,20 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   const secEmail = env.SECURITY_EMAIL || env.LOGIN_EMAIL; // alerts and recovery links; either address can stand in for the other if only one is set
   const mail = (to: string | undefined, subj: string, text: string) => (to ? sendMail(env, to, subj, text).catch(() => {}) : Promise.resolve()); // alerts are best-effort
   const loginEmail = async () => (await env.DB.prepare("SELECT value v FROM system_settings WHERE key='login_email'").first<{ v: string }>())?.v || env.LOGIN_EMAIL || secEmail;
-  const turnstile = async (tok: unknown) => {
-    if (!env.TURNSTILE_SECRET) return false; // fail closed
-    const f = new FormData(); f.set("secret", env.TURNSTILE_SECRET); f.set("response", String(tok ?? "")); f.set("remoteip", ip);
-    return !!((await (await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: f })).json().catch(() => ({}))) as { success?: boolean }).success;
+  // Strict Turnstile check: Cloudflare must accept the token, and it must have been issued for this site and for this exact action.
+  // On failure the reason code is returned (they are not secret) so a misconfiguration, such as a mismatched secret, can be seen instead of guessed.
+  const turnstile = async (tok: unknown, action: string): Promise<string | null> => {
+    if (!env.TURNSTILE_SECRET) return "not_configured"; // fail closed
+    if (!tok) return "no_token";
+    const f = new FormData(); f.set("secret", env.TURNSTILE_SECRET); f.set("response", String(tok)); f.set("remoteip", ip);
+    const r = (await (await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: f })).json().catch(() => null)) as { success?: boolean; hostname?: string; action?: string; "error-codes"?: string[] } | null;
+    if (!r) return "unreachable";
+    if (!r.success) return (r["error-codes"] ?? []).join(",") || "rejected";
+    if (r.hostname && r.hostname !== url.hostname) return "wrong_site";
+    if (r.action && r.action !== action) return "wrong_action";
+    return null;
   };
+  const botFail = (c: string) => json({ error: "bot_check", message: `Bot check failed (${c}). Wait for the check to finish, or reload the page and try again.` }, 400);
   if ((m === "POST" && (p.startsWith("/api/auth/") || p.startsWith("/api/settings/") || rec)) || (m !== "GET" && p.startsWith("/api/passkey"))) { // per-IP rate limit
     const rl = env.SECURITY.get(env.SECURITY.idFromName(`rl:${rec ? "rec" : "auth"}:${ipH}`));
     if (!((await (await rl.fetch(`https://do/hit?limit=${rec ? 6 : 12}&win=${rec ? 3600e3 : 600e3}`, { method: "POST" })).json()) as { ok: boolean }).ok) return json({ error: "rate_limited", message: "Too many requests. Wait a few minutes and try again." }, 429, { "Retry-After": "600" });
@@ -136,7 +145,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (p === "/api/auth/login" && m === "POST") {
     let s = await st("state"); const blk = blocked(s); if (blk) return blk;
     const b = await read(req);
-    if (!(await turnstile(b.turnstile))) return json({ error: "bot_check", message: "Bot check failed. Reload the page and try again." }, 400);
+    { const tf = await turnstile(b.turnstile, "login"); if (tf) return botFail(tf); }
     if ((await env.DB.prepare("SELECT COUNT(*) n FROM auth_factors WHERE kind='passkey'").first<{ n: number }>())!.n > 0 && !(await env.DB.prepare("DELETE FROM webauthn_challenges WHERE id=? AND purpose='proof' AND expires_at>? RETURNING id").bind(String(b.proof ?? ""), tn).first())) return json({ error: "passkey_required", message: "Verify your passkey first." }, 401);
     const o = await env.DB.prepare("SELECT password_hash h1, secret_hash h2 FROM owner_config WHERE id=1").first<{ h1: string; h2: string }>();
     if (!o) return json({ error: "setup_required", message: "Owner setup is not complete. Open /setup.html." }, 409);
@@ -170,7 +179,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
 
   // ---- recovery: reachable during lockdown; needs an emailed one-time link AND the secret code ----
   if (p === "/api/recovery/start" && m === "POST") {
-    if (!(await turnstile((await read(req)).turnstile))) return json({ error: "bot_check", message: "Bot check failed. Reload the page and try again." }, 400);
+    { const tf = await turnstile((await read(req)).turnstile, "recovery"); if (tf) return botFail(tf); }
     if (await env.DB.prepare("SELECT 1 x FROM owner_config WHERE id=1").first()) {
       const tok = rand(32);
       await env.DB.prepare("DELETE FROM recovery_tokens").run(); // invalidate older tokens

@@ -10,7 +10,7 @@ const cool = (r, d) => { // "wait N seconds": the attempt was not counted or che
   b.forEach((e) => { e.disabled = true; }); setTimeout(() => { if (!locked) b.forEach((e) => { e.disabled = false; }); }, n * 1000);
 };
 let tok = "", chal = "", wid, proof = "", needPk = false;
-window.tsReady = async () => { const k = (await (await fetch("/api/security/config")).json()).turnstileSiteKey; wid = turnstile.render("#ts", { sitekey: k, callback: (t) => { tok = t; }, "expired-callback": () => { tok = ""; } }); };
+window.tsReady = async () => { const k = (await (await fetch("/api/security/config")).json()).turnstileSiteKey; wid = turnstile.render("#ts", { sitekey: k, action: "login", appearance: "always", callback: (t) => { tok = t; err.hidden = true; }, "expired-callback": () => { tok = ""; }, "timeout-callback": () => { tok = ""; }, "error-callback": (c) => { tok = ""; show(`The bot check could not run (error ${c}). Reload the page; if it keeps happening, check that this address is allowed for the Turnstile widget.`); return true; } }); };
 $("tg").addEventListener("click", (e) => { const pw = $("pw"), on = pw.type === "password"; pw.type = on ? "text" : "password"; e.target.textContent = on ? "Hide" : "Show"; e.target.setAttribute("aria-pressed", String(on)); });
 fetch("/api/security/state").then((r) => r.json()).then((s) => { if (s.state === "lockdown") lockUI(); else if (s.state === "locked") show("The vault is locked until " + new Date(s.lockedUntil).toLocaleString() + "."); }).catch(() => {});
 const post = async (u, b) => { const r = await fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }); return [r, await r.json().catch(() => ({}))]; };
