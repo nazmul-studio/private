@@ -51,8 +51,8 @@ async function embed(env: Env, text: string): Promise<number[]> {
   return v;
 }
 async function describe(env: Env, jpeg: ArrayBuffer): Promise<string> {
-  const r = await runAI(env, CAPTION_MODEL, { task: "caption", caption_length: "long", image: "data:image/jpeg;base64," + b64(jpeg), max_tokens: 300 });
-  const t = String(r?.caption ?? r?.answer ?? "").replace(/\s+/g, " ").trim().slice(0, 1200);
+  const r = await runAI(env, CAPTION_MODEL, { task: "caption", caption_length: "long", image: "data:image/jpeg;base64," + b64(jpeg), max_tokens: 300, stream: false }); // without stream:false this model answers with an empty/streamed body
+  const o = (r?.result ?? r) as Record<string, any>, t = String(o?.caption ?? o?.answer ?? "").replace(/\s+/g, " ").trim().slice(0, 1200);
   if (!t) throw new Error("empty_description");
   return t;
 }
