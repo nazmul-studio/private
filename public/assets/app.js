@@ -295,7 +295,7 @@ async function runReindex(retry) { // describes photos uploaded before search ex
       const r = await send("/api/search/reindex", "POST", { retry: retry && first }), d = await r.json().catch(() => ({})); first = false;
       if (!r.ok) { msg.textContent = d.message || "Couldn't analyse photos."; return; }
       done += d.done; msg.textContent = `Analysed ${done} · ${d.left} waiting${d.failed ? ` · ${d.failed} failed in the last step` : ""}`;
-      if (d.done === 0 && d.failed > 0 && ++bad >= 2) { msg.textContent = "Stopped: the AI service keeps returning errors. Try again later with Retry failed."; return; }
+      if (d.done === 0 && d.failed > 0 && ++bad >= 2) { msg.textContent = `Stopped: the AI service keeps returning errors${d.error ? ": " + d.error : ""}. Fix that, then use Retry failed.`; return; }
       if (d.done > 0) bad = 0;
       if (!d.left) break;
     }
@@ -310,7 +310,7 @@ async function applySearch() { // media views: best matches first; the filter an
   let d; try { d = await (await api("/api/search?" + prm)).json(); } catch (e) { if (!e || e.message !== "auth") note.textContent = "Search failed. Try again."; return; }
   if (seq !== searchSeq) return; // a newer search is already running
   items = d.results || [];
-  note.textContent = `${items.length} best ${items.length === 1 ? "match" : "matches"} for “${search}”` + (d.semantic ? "" : " · matching names only (AI search is not available)") + (d.pending ? ` · ${d.pending} ${d.pending === 1 ? "photo is" : "photos are"} not analysed yet (Settings → Photo search)` : "");
+  note.textContent = `${items.length} best ${items.length === 1 ? "match" : "matches"} for “${search}”` + (d.semantic ? (d.analysed === 0 ? " · none of your photos are analysed yet: open Settings → Photo search → Analyse photos" : "") : d.reason === "no_binding" ? " · matching names only: the AI binding is missing on the server (add it in wrangler.jsonc and redeploy)" : ` · matching names only: AI search failed (${d.reason || "unknown error"})`) + (d.pending ? ` · ${d.pending} ${d.pending === 1 ? "photo is" : "photos are"} not analysed yet (Settings → Photo search)` : "");
   drawGrid();
 }
 const cur2 = () => lbList[lbIdx];

@@ -262,6 +262,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     const q = (url.searchParams.get("q") ?? "").trim().slice(0, 300), { like, cond } = scopeOf(url.searchParams.get("kind") ?? "all");
     const pendingN = async () => (await env.DB.prepare("SELECT COUNT(*) n FROM media_metadata WHERE has_thumb=1 AND indexed_at IS NULL AND deleted_at IS NULL").first<{ n: number }>())!.n;
     if (!q) return json({ results: [], semantic: false, pending: await pendingN() });
+    const why = (e: unknown) => String((e as Error)?.message ?? e).replace(/\s+/g, " ").slice(0, 200); // short, so the page can show the real reason instead of a vague "not available"
     const colQ = url.searchParams.get("collection") ?? "", col = /^[\w-]{1,64}$/.test(colQ) ? colQ : null;
     const colSql = col ? " AND mm.id IN (SELECT media_id FROM collection_items WHERE collection_id=?)" : "", colBind = col ? [col] : [];
     const hits = new Map<string, { sem: number; kw: number }>(), hit = (id: string) => { let h = hits.get(id); if (!h) hits.set(id, (h = { sem: 0, kw: 0 })); return h; };
@@ -271,7 +272,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
       const rows = (await env.DB.prepare(`SELECT mm.id, mm.name, mm.description FROM media_metadata mm WHERE ${cond} AND mm.mime LIKE ?${colSql} AND (${any}) LIMIT 300`).bind(like, ...colBind, ...pats).all<{ id: string; name: string; description: string | null }>()).results;
       for (const r of rows) hit(r.id).kw = keywordScore(terms, r.name, r.description);
     }
-    let semantic = false;
+    let semantic = false, reason = env.AI ? "" : "no_binding";
     if (env.AI) {
       try {
         const qv = unit(await embed(env, q));
@@ -282,12 +283,12 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
           after = rows[rows.length - 1].id;
         }
         semantic = true;
-      } catch (e) { console.error("search_ai_failed", (e as Error).message); } // falls back to word matching
+      } catch (e) { reason = why(e); console.error("search_ai_failed", reason); } // falls back to word matching
     }
     const top = rank(hits, 80);
     const found = top.length ? (await env.DB.prepare(`SELECT id,name,mime,size,created_at,favorite,has_thumb,deleted_at,description FROM media_metadata WHERE id IN (${top.map(() => "?").join(",")})`).bind(...top.map((t) => t.id)).all<{ id: string }>()).results : [];
     const byId = new Map(found.map((r) => [r.id, r]));
-    return json({ results: top.flatMap((t) => { const r = byId.get(t.id); return r ? [{ ...r, score: Math.round(t.score * 100) / 100 }] : []; }), semantic, pending: await pendingN() });
+    return json({ results: top.flatMap((t) => { const r = byId.get(t.id); return r ? [{ ...r, score: Math.round(t.score * 100) / 100 }] : []; }), semantic, reason, analysed: (await env.DB.prepare("SELECT COUNT(*) n FROM media_vectors").first<{ n: number }>())!.n, pending: await pendingN() });
   }
   if (p === "/api/search/status" && m === "GET") {
     const s = await env.DB.prepare("SELECT COALESCE(SUM(indexed_at>0),0) done_n, COALESCE(SUM(indexed_at IS NULL AND has_thumb=1 AND deleted_at IS NULL),0) wait_n, COALESCE(SUM(indexed_at=-1),0) fail_n FROM media_metadata").first<{ done_n: number; wait_n: number; fail_n: number }>(); // (INDEXED is an SQL keyword, so it is not used as a column name)
@@ -298,10 +299,10 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if ((await read(req)).retry === true) await env.DB.prepare("UPDATE media_metadata SET indexed_at=NULL WHERE indexed_at=-1").run();
     const rows = (await env.DB.prepare("SELECT id, r2_key FROM media_metadata WHERE has_thumb=1 AND indexed_at IS NULL AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 3").all<{ id: string; r2_key: string }>()).results;
     const res = await Promise.allSettled(rows.map(async (r) => { const o = await env.MEDIA_BUCKET.get(r.r2_key + ".thumb"); if (!o) throw new Error("no_thumbnail"); await indexMedia(env, r.id, await o.arrayBuffer()); }));
-    let done = 0, failed = 0;
-    for (const [i, x] of res.entries()) { if (x.status === "fulfilled") done++; else { failed++; console.error("index_failed", String(x.reason?.message ?? x.reason)); await markFailed(env, rows[i].id); } }
+    let done = 0, failed = 0, error = "";
+    for (const [i, x] of res.entries()) { if (x.status === "fulfilled") done++; else { failed++; const m = String(x.reason?.message ?? x.reason).replace(/\s+/g, " ").slice(0, 200); error ||= m; console.error("index_failed", m); await markFailed(env, rows[i].id); } }
     const left = (await env.DB.prepare("SELECT COUNT(*) n FROM media_metadata WHERE has_thumb=1 AND indexed_at IS NULL AND deleted_at IS NULL").first<{ n: number }>())!.n;
-    return json({ done, failed, left });
+    return json({ done, failed, left, error });
   }
   if (p === "/api/media/bulk" && m === "POST") { // several files at once; the page sends at most MAX_BULK ids per call
     const b = await read(req), ids = cleanIds(b.ids), act = String(b.action ?? "");
