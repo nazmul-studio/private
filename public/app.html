@@ -517,6 +517,7 @@
         </div>
 
         <p id="search-note" class="vx-note hidden"></p>
+        <div id="lock-bar" class="vx-lockbar hidden"><span id="lock-msg"></span><button data-act="unlockVault" class="vx-lockbtn">Unlock</button></div>
 
         <!-- High Density Serial Grid (Small square tiles, many per row) -->
         <div id="media-grid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2">
@@ -615,6 +616,7 @@
         </label>
       </div>
 
+      <label class="vx-encrow"><input type="checkbox" id="up-enc" checked><span><b>End-to-end encrypt</b> — locked in your browser; the server can&#39;t see inside. AI photo search skips these files.</span></label>
       <p id="upload-target" class="vx-note hidden"></p>
       <div id="upload-queue" class="vx-queue hidden"></div>
 
@@ -635,6 +637,21 @@
     </div>
   </div>
 
+
+  <!-- Encryption passphrase -->
+  <div id="pass-modal" class="vx-top fixed inset-0 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <form id="pass-form" class="glass-card w-full max-w-sm rounded-2xl p-5 space-y-3 glow-cyan border-cyan-400/30" autocomplete="off">
+      <div id="pass-title" class="text-xs font-bold font-mono tracking-wider text-white uppercase"></div>
+      <p id="pass-hint" class="vx-note"></p>
+      <input id="pass-in" type="password" autocomplete="off" placeholder="Encryption passphrase" class="vx-input">
+      <input id="pass-in2" type="password" autocomplete="off" placeholder="Repeat passphrase" class="vx-input hidden">
+      <p id="pass-err" class="vx-err hidden"></p>
+      <div class="flex justify-end gap-2 pt-1 text-xs">
+        <button type="button" id="pass-cancel" class="px-3 py-1.5 text-slate-400 hover:text-white">Cancel</button>
+        <button id="pass-ok" class="px-3.5 py-1.5 rounded-lg font-semibold text-black bg-cyan-400 hover:bg-cyan-300 font-mono text-xs">Unlock</button>
+      </div>
+    </form>
+  </div>
 
   <div id="maint" class="hidden fixed inset-0 z-[70] bg-[#020617] overflow-auto flex items-center justify-center p-5">
     <div class="ambient-glow"></div><div class="ambient-glow-2"></div>

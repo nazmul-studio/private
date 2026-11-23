@@ -2333,3 +2333,19 @@ body {
 .vx-gtip.hidden{display:none}
 .vx-gidle{position:absolute;left:10px;bottom:10px;z-index:5;display:flex;flex-direction:column;gap:2px;padding:6px 10px;border-radius:10px;background:rgba(4,8,23,.88);border:1px solid rgba(30,58,138,.7);pointer-events:none}
 .vx-gidle.hidden{display:none}
+
+/* ---- End-to-end encryption and serial numbers ---- */
+.vx-lk{padding:1px 5px;border-radius:4px;background:rgba(5,150,105,.88);color:#ecfdf5;font:700 9px 'JetBrains Mono',monospace;letter-spacing:.04em}
+.vx-locked{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:repeating-linear-gradient(45deg,#050b1f,#050b1f 8px,#07112b 8px,#07112b 16px);font:700 10px 'JetBrains Mono',monospace;color:#34d399;letter-spacing:.1em}
+.vx-dec{padding:2rem;text-align:center;font:12px/1.5 'JetBrains Mono',monospace;color:#94a3b8}
+.vx-encrow{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;border:1px solid rgba(16,185,129,.35);background:rgba(6,78,59,.2);font:10px/1.45 'JetBrains Mono',monospace;color:#a7f3d0;cursor:pointer}
+.vx-encrow input{margin-top:2px;accent-color:#10b981}
+.vx-input{width:100%;padding:8px 10px;border-radius:10px;border:1px solid rgba(30,58,138,.8);background:#040816;color:#e2e8f0;font:13px 'JetBrains Mono',monospace;outline:none}
+.vx-input:focus{border-color:#22d3ee}
+.vx-input.hidden{display:none}
+.vx-err{font:11px 'JetBrains Mono',monospace;color:#fda4af}
+.vx-err.hidden{display:none}
+.vx-lockbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:10px;border:1px solid rgba(16,185,129,.35);background:rgba(6,78,59,.2);font:11px 'JetBrains Mono',monospace;color:#a7f3d0}
+.vx-lockbar.hidden{display:none}
+.vx-lockbtn{padding:4px 10px;border-radius:8px;background:#34d399;color:#04130d;font:700 11px 'JetBrains Mono',monospace;cursor:pointer}
+.vx-top{z-index:95}

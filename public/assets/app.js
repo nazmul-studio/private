@@ -1,4 +1,5 @@
-import { LIMITS, categoryOfName, sizeMessage, planParts, cleanName } from "/assets/limits.js";
+import { LIMITS, FILE_MIME, ext, categoryOfName, sizeMessage, planParts, cleanName } from "/assets/limits.js";
+import { randomB64, deriveKey, encryptBlob, decryptBuffer, encryptText, decryptText, makeVerifier, checkVerifier } from "/assets/e2ee.js";
 import { createGlobe } from "/assets/globe.js";
 const $ = (i) => document.getElementById(i);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -14,12 +15,13 @@ let me = null, st = { total: 0, photos: 0, videos: 0, docs: 0, favs: 0, trash: 0
 let tab = "overview", sub = "", search = "", fileFilter = "all", dense = true;
 let items = [], baseItems = [], lbList = [], lbIdx = 0, ctx = "", pickIds = [], pending = [], resumeT = null, cur = null, busy = false, toastT = 0;
 let sel = new Set(), selMode = false, searchT = 0, searchSeq = 0; // selection and search state
+let ekey = null, ecfg = null, lbUrl = null, lbSeq = 0; const ethumbs = new Map(); // end-to-end encryption: the key lives only in this tab's memory
 
 const api = async (path, o = {}) => { const r = await fetch(path, { ...o, headers: { ...(o.headers || {}), "X-CSRF": me ? me.csrf : "" } }); if (r.status === 401 || r.status === 423) { location.href = "/"; throw new Error("auth"); } if (r.status === 503) { render(); throw new Error("auth"); } return r; };
 const J = { "Content-Type": "application/json" }, send = (u, m, b) => api(u, { method: m, headers: J, body: b ? JSON.stringify(b) : undefined });
 const jpost = async (path, body) => { const r = await api(path, { method: "POST", headers: J, body: JSON.stringify(body || {}) }); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.message || "Upload failed."); return d; };
 const toast = (m, ms = 4500) => { const t = $("toast"); t.textContent = m; t.classList.remove("hidden"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.add("hidden"), ms); };
-const loadList = async (kind) => { let out = []; for (let off = 0, i = 0; i < 25; i++, off += 200) { const r = await (await api(`/api/media?kind=${kind}&offset=${off}`)).json(); out = out.concat(r); if (r.length < 200) break; } return out; };
+const loadList = async (kind) => { let out = []; for (let off = 0, i = 0; i < 25; i++, off += 200) { const r = await (await api(`/api/media?kind=${kind}&offset=${off}`)).json(); out = out.concat(r); if (r.length < 200) break; } return hydrate(out); };
 const typeOf = (f) => { const e = (f.name.split(".").pop() || "").toLowerCase(); return f.mime === "application/pdf" || e === "pdf" ? "pdf" : ["zip", "rar", "7z", "tar", "gz", "bz2"].includes(e) ? "archive" : ["doc", "docx", "txt", "rtf", "odt", "xlsx", "xls", "csv", "json", "md"].includes(e) ? "document" : f.mime.startsWith("image/") ? "image" : f.mime.startsWith("video/") ? "video" : "other"; };
 const extOf = (f) => (f.name.split(".").pop() || "bin").toLowerCase();
 
@@ -74,7 +76,7 @@ async function renderOverview() {
   $("map-idle-title").textContent = ss.length ? "NO LOCATION DATA" : "NO ACTIVE SESSIONS";
   $("map-idle-sub").textContent = ss.length ? `${ss.length} active ${ss.length === 1 ? "session" : "sessions"} · location unavailable` : "No active connections";
   const pend = await (await api("/api/media/video/pending")).json().catch(() => []);
-  $("resume-slot").innerHTML = pend.map((u) => `<div class="glass-card rounded-2xl p-4 border border-amber-500/30 flex items-center justify-between gap-3"><div class="min-w-0"><div class="text-xs font-bold font-mono tracking-wider text-amber-300 uppercase">Unfinished upload</div><div class="text-[11px] font-mono text-slate-400 truncate">${esc(u.name)} · ${fmt(u.size)} — pick the same file to continue</div></div><div class="flex gap-2 shrink-0"><button data-resume="${u.id}" data-name="${esc(u.name)}" data-size="${u.size}" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-black bg-cyan-400 hover:bg-cyan-300 font-mono">Resume</button><button data-discard="${u.id}" class="px-3 py-1.5 rounded-lg text-xs font-mono text-slate-400 hover:text-white bg-slate-900/60 border border-blue-950">Discard</button></div></div>`).join("");
+  $("resume-slot").innerHTML = pend.map((u) => `<div class="glass-card rounded-2xl p-4 border border-amber-500/30 flex items-center justify-between gap-3"><div class="min-w-0"><div class="text-xs font-bold font-mono tracking-wider text-amber-300 uppercase">Unfinished upload</div><div class="text-[11px] font-mono text-slate-400 truncate">${u.enc ? `Encrypted video · ${fmt(u.size)} — can't be resumed; discard it and upload again` : `${esc(u.name)} · ${fmt(u.size)} — pick the same file to continue`}</div></div><div class="flex gap-2 shrink-0">${u.enc ? "" : `<button data-resume="${u.id}" data-name="${esc(u.name)}" data-size="${u.size}" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-black bg-cyan-400 hover:bg-cyan-300 font-mono">Resume</button>`}<button data-discard="${u.id}" class="px-3 py-1.5 rounded-lg text-xs font-mono text-slate-400 hover:text-white bg-slate-900/60 border border-blue-950">Discard</button></div></div>`).join("");
 }
 
 /* ---------- files list ---------- */
@@ -92,7 +94,8 @@ function drawFiles() {
   $("files-total-badge").textContent = list.length; $("files-empty-state").classList.toggle("hidden", list.length > 0);
   $("files-list-container").dataset.selMode = selMode ? "1" : "0";
   $("files-list-container").innerHTML = list.map((f) => { const t = typeOf(f), [bc, ic] = FILE_STYLE[t];
-    return `<div data-fid="${f.id}" class="glass-card rounded-xl p-3 sm:p-3.5 flex items-center justify-between gap-3 hover:border-amber-400/40 transition-all group${sel.has(f.id) ? " vx-sel" : ""}"><div class="flex items-center gap-3 min-w-0"><button data-sel="${f.id}" class="vx-chk vx-rowchk" title="Select" aria-label="Select">${IC(P.check)}</button><div class="w-10 h-10 rounded-xl ${bc} border flex items-center justify-center shrink-0">${IC(P.file, "w-4 h-4 " + ic)}</div><div class="min-w-0"><div class="flex items-center gap-2"><a href="/api/media/${f.id}" target="_blank" rel="noopener" class="text-xs font-semibold text-white truncate group-hover:text-amber-300 transition-colors font-mono">${esc(f.name)}</a><span class="text-[8px] font-mono px-1.5 py-0.5 rounded uppercase ${bc} font-bold">${esc(extOf(f))}</span></div><div class="flex items-center gap-2 mt-0.5 text-[10px] font-mono text-slate-400"><span class="text-slate-300">${fmt(f.size)}</span><span>·</span><span>${new Date(f.created_at).toLocaleDateString()}</span><span>·</span><span class="text-emerald-400 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> AES-256</span></div></div></div><div class="flex items-center gap-1.5 shrink-0">${rowBtns(f)}</div></div>`; }).join("");
+    return `<div data-fid="${f.id}" class="glass-card rounded-xl p-3 sm:p-3.5 flex items-center justify-between gap-3 hover:border-amber-400/40 transition-all group${sel.has(f.id) ? " vx-sel" : ""}"><div class="flex items-center gap-3 min-w-0"><button data-sel="${f.id}" class="vx-chk vx-rowchk" title="Select" aria-label="Select">${IC(P.check)}</button><div class="w-10 h-10 rounded-xl ${bc} border flex items-center justify-center shrink-0">${IC(P.file, "w-4 h-4 " + ic)}</div><div class="min-w-0"><div class="flex items-center gap-2">${f.enc ? `<span data-open="${f.id}" class="text-xs font-semibold text-white truncate group-hover:text-amber-300 transition-colors font-mono cursor-pointer">${esc(lbl(f))}</span>${LK_BADGE}` : `<a href="/api/media/${f.id}" target="_blank" rel="noopener" class="text-xs font-semibold text-white truncate group-hover:text-amber-300 transition-colors font-mono">${esc(lbl(f))}</a>`}<span class="text-[8px] font-mono px-1.5 py-0.5 rounded uppercase ${bc} font-bold">${esc(extOf(f))}</span></div><div class="flex items-center gap-2 mt-0.5 text-[10px] font-mono text-slate-400"><span class="text-slate-300">${fmt(f.size)}</span><span>·</span><span>${new Date(f.created_at).toLocaleDateString()}</span><span>·</span><span class="text-emerald-400 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> ${f.enc ? "E2E AES-256" : "AES-256"}</span></div></div></div><div class="flex items-center gap-1.5 shrink-0">${rowBtns(f)}</div></div>`; }).join("");
+  lockBar();
 }
 const BTN = "p-1.5 rounded-lg bg-blue-950/60 hover:bg-blue-900 border border-blue-900/60 text-slate-300 hover:text-white transition-all cursor-pointer";
 const rowBtns = (f) => ctx === "trash" ? `<button data-restore="${f.id}" title="Restore" class="${BTN}">${IC(P.restore, "w-3.5 h-3.5")}</button><button data-del="${f.id}" data-perm="1" title="Delete forever" class="p-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900/50 text-rose-400 hover:text-rose-200 transition-all cursor-pointer">${IC(P.trash, "w-3.5 h-3.5")}</button>` :
@@ -119,25 +122,31 @@ function drawGrid() {
   $("empty-state-title").textContent = search ? "NO MATCHES" : tab === "photos" ? "NO PHOTOS" : tab === "videos" ? "NO VIDEOS" : tab === "favorites" ? "NO FAVORITES" : tab === "trash" ? "TRASH IS EMPTY" : sub ? "EMPTY" : "NO MEDIA";
   $("media-grid").innerHTML = list.map((f) => {
     const vid = f.mime.startsWith("video/"), img = f.mime.startsWith("image/") && f.mime !== "image/heic", u = "/api/media/" + f.id, d = ctx === "trash" ? daysLeft(f) : null;
-    const face = f.has_thumb ? `<img src="${u}?thumb=1" alt="${esc(f.name)}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">` : img ? `<img src="${u}" alt="${esc(f.name)}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">` : `<div class="w-full h-full flex items-center justify-center text-[10px] font-mono font-bold text-cyan-400 uppercase">${esc(extOf(f))}</div>`;
-    return `<div data-open="${f.id}" class="vx-tile group relative aspect-square bg-[#030612] rounded-lg overflow-hidden border border-blue-950/80 hover:border-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all duration-150 cursor-pointer${sel.has(f.id) ? " vx-sel" : ""}">${face}<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div><button data-sel="${f.id}" class="vx-chk" title="Select" aria-label="Select">${IC(P.check)}</button><div class="vx-badges">${vid ? VID_BADGE : ""}${f.favorite ? FAV_BADGE : ""}</div>${d !== null ? `<div class="vx-days" title="Deleted automatically after 30 days">${d}d</div>` : `<div class="vx-name">${esc(f.name)}</div>`}<div class="vx-acts">${tileButtons(f)}</div></div>`;
+    const face = f.enc ? (f.has_thumb && ekey ? `<img data-et="${f.id}" alt="" class="w-full h-full object-cover">` : `<div class="vx-locked">${f.dn ? esc(extOf(f)) : "LOCKED"}</div>`) : f.has_thumb ? `<img src="${u}?thumb=1" alt="${esc(f.name)}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">` : img ? `<img src="${u}" alt="${esc(f.name)}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">` : `<div class="w-full h-full flex items-center justify-center text-[10px] font-mono font-bold text-cyan-400 uppercase">${esc(extOf(f))}</div>`;
+    return `<div data-open="${f.id}" class="vx-tile group relative aspect-square bg-[#030612] rounded-lg overflow-hidden border border-blue-950/80 hover:border-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all duration-150 cursor-pointer${sel.has(f.id) ? " vx-sel" : ""}">${face}<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div><button data-sel="${f.id}" class="vx-chk" title="Select" aria-label="Select">${IC(P.check)}</button><div class="vx-badges">${f.enc ? LK_BADGE : ""}${vid ? VID_BADGE : ""}${f.favorite ? FAV_BADGE : ""}</div>${d !== null ? `<div class="vx-days" title="Deleted automatically after 30 days">${d}d</div>` : `<div class="vx-name">${esc(lbl(f))}</div>`}<div class="vx-acts">${tileButtons(f)}</div></div>`;
   }).join("");
+  lockBar(); paintEnc();
 }
 
 /* ---------- lightbox ---------- */
 function showLb() {
   const f = lbList[lbIdx]; if (!f) return closeLb();
   const vid = f.mime.startsWith("video/"), u = "/api/media/" + f.id, tr = ctx === "trash", col = ctx.startsWith("col:");
-  $("lb-title").textContent = f.name; $("lb-meta").textContent = `${fmt(f.size)} · ${new Date(f.created_at).toLocaleDateString()}${tr && f.deleted_at ? ` · deleted for good in ${daysLeft(f)} days` : ""}`;
+  $("lb-title").textContent = lbl(f); $("lb-meta").textContent = `${fmt(f.size)} · ${new Date(f.created_at).toLocaleDateString()}${tr && f.deleted_at ? ` · deleted for good in ${daysLeft(f)} days` : ""}`;
   $("lb-desc").textContent = f.description || ""; $("lb-desc").classList.toggle("hidden", !f.description);
   $("lb-index-counter").textContent = `${lbIdx + 1} / ${lbList.length}`; $("lb-type-badge").textContent = vid ? "VIDEO" : "PHOTO";
-  $("lb-media-container").innerHTML = vid ? `<video src="${u}" controls autoplay playsinline class="max-w-full max-h-[75vh] rounded-lg"></video>` : f.mime === "image/heic" ? `<div class="text-xs font-mono text-slate-400 text-center p-8">HEIC preview isn't supported by browsers.<br>Use download to open it.</div>` : `<img src="${u}" alt="${esc(f.name)}" class="max-w-full max-h-[75vh] object-contain rounded-lg">`;
+  $("lb-media-container").innerHTML = f.enc ? '<div class="vx-dec">Decrypting…</div>' : vid ? `<video src="${u}" controls autoplay playsinline class="max-w-full max-h-[75vh] rounded-lg"></video>` : f.mime === "image/heic" ? `<div class="text-xs font-mono text-slate-400 text-center p-8">HEIC preview isn't supported by browsers.<br>Use download to open it.</div>` : `<img src="${u}" alt="${esc(f.name)}" class="max-w-full max-h-[75vh] object-contain rounded-lg">`;
+  if (f.enc) decLb(f, vid);
   $("lb-fav-btn").classList.toggle("hidden", tr); $("lb-fav-btn").classList.toggle("text-amber-400", !!f.favorite); $("lb-fav-btn").classList.toggle("text-slate-400", !f.favorite);
-  $("lb-download-btn").href = u + "?download=1"; $("lb-add-btn").classList.toggle("hidden", tr); $("lb-rm-btn").classList.toggle("hidden", !col);
+  $("lb-download-btn").href = f.enc ? "#" : u + "?download=1"; $("lb-add-btn").classList.toggle("hidden", tr); $("lb-rm-btn").classList.toggle("hidden", !col);
   $("lb-restore-btn").classList.toggle("hidden", !tr); $("lb-del-btn").classList.remove("hidden"); $("lb-del-btn").title = tr ? "Delete forever" : "Move to Trash";
 }
-const closeLb = () => { $("lightbox").classList.add("hidden"); $("lb-media-container").innerHTML = ""; };
-const openLb = (id) => { const i = lbList.findIndex((f) => f.id === id); if (i < 0) return window.open("/api/media/" + id, "_blank", "noopener"); lbIdx = i; showLb(); $("lightbox").classList.remove("hidden"); };
+const closeLb = () => { lbSeq++; if (lbUrl) { URL.revokeObjectURL(lbUrl); lbUrl = null; } $("lightbox").classList.add("hidden"); $("lb-media-container").innerHTML = ""; };
+const openLb = async (id) => {
+  const f = items.find((x) => x.id === id); if (f && f.enc && !ekey && !(await ensureKey())) return;
+  const i = lbList.findIndex((x) => x.id === id); if (i < 0) return f && f.enc ? downloadEnc(f) : window.open("/api/media/" + id, "_blank", "noopener");
+  lbIdx = i; showLb(); $("lightbox").classList.remove("hidden");
+};
 const stepLb = (d) => { if (!lbList.length) return; lbIdx = (lbIdx + d + lbList.length) % lbList.length; showLb(); };
 
 /* ---------- extra pages ---------- */
@@ -148,6 +157,7 @@ const DBTN = "px-3 py-1.5 rounded-lg text-xs font-mono text-rose-300 bg-rose-950
 const CARD = "glass-card rounded-2xl p-5 border border-blue-950/80 space-y-3";
 const FIELD = (id, label, type = "password", ac = "off") => `<div class="space-y-1.5"><label for="${id}" class="text-[10px] font-mono uppercase tracking-wider text-slate-400">${label}</label><input id="${id}" type="${type}" autocomplete="${ac}" class="w-full bg-[#040816] text-xs text-slate-200 px-3 py-2 rounded-lg border border-blue-950 focus:outline-none focus:border-cyan-400 font-mono"></div>`;
 const EMPTY = (t, d) => `<div class="py-12 text-center rounded-2xl border border-dashed border-blue-950 bg-blue-950/10 space-y-1"><div class="text-xs font-mono font-semibold text-slate-300 uppercase">${t}</div><div class="text-[10px] font-mono text-slate-400">${d}</div></div>`;
+const encCard = (c) => `<div class="${CARD}"><h3 class="text-xs font-bold font-mono tracking-wider text-white uppercase">End-to-end encryption</h3><p class="text-[11px] font-mono text-slate-400">Encrypted files, their thumbnails and names are locked in your browser with your passphrase before they are uploaded. The server and Cloudflare cannot read them, and AI photo search skips them. If you forget the passphrase they cannot be recovered.</p><p class="text-[11px] font-mono ${ekey ? "text-emerald-400" : "text-slate-300"}">${!c ? "Status unavailable." : !c.configured ? "Not set up yet." : ekey ? "Unlocked in this browser." : "Locked."}</p><div class="flex gap-2">${c && !c.configured ? `<button data-act="setupEnc" class="${SBTN}">Set up passphrase</button>` : ekey ? `<button data-act="lockVault" class="${SBTN}">Lock now</button>` : c ? `<button data-act="unlockVault" class="${SBTN}">Unlock</button>` : ""}</div></div>`;
 const ixCard = (ix) => `<div class="${CARD}"><h3 class="text-xs font-bold font-mono tracking-wider text-white uppercase">Photo search</h3><p class="text-[11px] font-mono text-slate-400">Search finds photos and videos by what is in them: describe the scene, colours, clothes or what is happening, in English or Bangla. New uploads are analysed automatically. Use the button for photos uploaded earlier.</p>${ix && ix.ai === false ? '<p class="text-[11px] font-mono text-rose-300">The AI binding is not set up, so only filename search works. See the README.</p>' : ""}<div id="idx-msg" class="text-[11px] font-mono text-slate-300">${ix ? `${ix.indexed} analysed · ${ix.pending} waiting${ix.failed ? ` · ${ix.failed} failed` : ""}` : ""}</div><div class="flex flex-wrap gap-2"><button data-reindex="1" class="${GBTN}">Analyse photos</button>${ix && ix.failed ? `<button data-reindex="1" data-retry="1" class="${SBTN}">Retry failed</button>` : ""}</div></div>`;
 async function renderPage() {
   const v = $("view-page");
@@ -161,10 +171,10 @@ async function renderPage() {
     const l = await (await api("/api/security/log")).json();
     v.innerHTML = HDR("LOGIN HISTORY") + (l.length ? `<div class="space-y-2">${l.map((e) => `<div class="glass-card rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-[11px] font-mono"><span class="text-slate-200">${esc(e.event.replace(/_/g, " "))}</span><span class="text-slate-400">${new Date(e.at).toLocaleString()}</span></div>`).join("")}</div>` : EMPTY("No activity yet", "Sign-ins and lock events appear here."));
   } else if (tab === "settings") {
-    const [l, ix] = await Promise.all([api("/api/passkeys").then((r) => r.json()), api("/api/search/status").then((r) => r.json()).catch(() => null)]);
+    const [l, ix, ec] = await Promise.all([api("/api/passkeys").then((r) => r.json()), api("/api/search/status").then((r) => r.json()).catch(() => null), api("/api/e2ee").then((r) => r.json()).catch(() => null)]);
     v.innerHTML = HDR("SETTINGS") + `<div class="${CARD}"><h3 class="text-xs font-bold font-mono tracking-wider text-white uppercase">Passkeys</h3>${l.length ? `<div class="space-y-2">${l.map((k) => `<div class="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-[#040817] border border-blue-950/70 text-[11px] font-mono text-slate-200"><span>${esc(k.name)}</span><button data-pkdel="${k.id}" class="${DBTN}">Remove</button></div>`).join("")}</div>` : `<p class="text-[11px] font-mono text-slate-400">No passkeys yet. Once you add one, sign-in requires it.</p>`}${FIELD("pks", "Secret code (needed to add or remove a passkey)")}<button data-pkadd="1" class="${GBTN}">Add a passkey</button></div>
     <div class="${CARD}"><h3 class="text-xs font-bold font-mono tracking-wider text-white uppercase">Login email</h3>${FIELD("le", "New login email", "email", "email")}${FIELD("ls", "Secret code")}<button data-lemail="1" class="${SBTN}">Change login email</button></div>
-    <div class="${CARD}"><h3 class="text-xs font-bold font-mono tracking-wider text-white uppercase">Limits</h3><div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">${[["IMAGES / PDF", fmt(me.maxImage)], ["FILES", fmt(me.maxFile)], ["VIDEOS", fmt(me.maxVideo)], ["TOTAL", fmt(me.cap)]].map(([a, b]) => `<div class="p-2.5 rounded-xl bg-[#040817] border border-blue-950/70"><span class="text-[9px] font-mono text-slate-400 block">${a}</span><span class="text-xs font-mono font-bold text-cyan-300">${b}</span></div>`).join("")}</div><p class="text-[10px] font-mono text-slate-400">These are set in the project files.</p></div>${ixCard(ix)}`;
+    <div class="${CARD}"><h3 class="text-xs font-bold font-mono tracking-wider text-white uppercase">Limits</h3><div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">${[["IMAGES / PDF", fmt(me.maxImage)], ["FILES", fmt(me.maxFile)], ["VIDEOS", fmt(me.maxVideo)], ["TOTAL", fmt(me.cap)]].map(([a, b]) => `<div class="p-2.5 rounded-xl bg-[#040817] border border-blue-950/70"><span class="text-[9px] font-mono text-slate-400 block">${a}</span><span class="text-xs font-mono font-bold text-cyan-300">${b}</span></div>`).join("")}</div><p class="text-[10px] font-mono text-slate-400">These are set in the project files.</p></div>${encCard(ec)}${ixCard(ix)}`;
   }
 }
 
@@ -197,42 +207,106 @@ async function render() {
     else if ((tab === "albums" || tab === "folders") && sub) {
       ctx = "col:" + sub; $("view-media").classList.remove("hidden"); $("media-back").href = "#" + tab; $("media-back").classList.remove("hidden");
       const [cl, it] = await Promise.all([api("/api/collections?kind=" + (tab === "albums" ? "album" : "folder")).then((r) => r.json()), api(`/api/collections/${sub}/media`).then((r) => r.json())]);
-      const c = cl.find((x) => x.id === sub); $("media-view-title").textContent = c ? c.name.toUpperCase() : tab.toUpperCase(); baseItems = items = it; setGridSize(dense ? "dense" : "normal"); await applySearch();
+      const c = cl.find((x) => x.id === sub); $("media-view-title").textContent = c ? c.name.toUpperCase() : tab.toUpperCase(); baseItems = items = await hydrate(it); setGridSize(dense ? "dense" : "normal"); await applySearch();
     } else { $("view-page").classList.remove("hidden"); await renderPage(); }
   }
 }
 const refresh = () => render();
 
+/* ---------- end-to-end encryption ---------- */
+const LK_BADGE = '<span class="vx-lk" title="End-to-end encrypted">E2E</span>';
+const lbl = (f) => (f.enc && !f.dn ? f.name : `#${f.serial} ${f.name}`);
+async function hydrate(list) { // names of encrypted files are decrypted here, in the browser
+  if (ekey) await Promise.all(list.filter((f) => f.enc && f.enc_name && !f.dn).map(async (f) => { try { f.name = await decryptText(ekey, f.enc_name); f.dn = 1; } catch {} }));
+  return list;
+}
+function lockBar() { const b = $("lock-bar"); if (!b) return; const n = (items || []).filter((f) => f.enc && !f.dn).length; b.classList.toggle("hidden", !n); $("lock-msg").textContent = `${n} encrypted ${n === 1 ? "file is" : "files are"} locked.`; }
+const askPass = (mode) => new Promise((res) => {
+  const mk = mode === "create", m = $("pass-modal"), f = $("pass-form"), i1 = $("pass-in"), i2 = $("pass-in2"), er = $("pass-err"), ok = $("pass-ok");
+  $("pass-title").textContent = mk ? "Create encryption passphrase" : "Unlock encrypted files";
+  $("pass-hint").textContent = mk ? "Your files are encrypted in this browser with this passphrase. It is never sent anywhere. If you lose it, encrypted files cannot be recovered by anyone, including you, Cloudflare or support. Use a long phrase (at least 8 characters)." : "Enter your encryption passphrase.";
+  i1.value = i2.value = ""; i2.classList.toggle("hidden", !mk); er.classList.add("hidden"); ok.textContent = mk ? "Create" : "Unlock"; m.classList.remove("hidden"); i1.focus();
+  const done = (v) => { m.classList.add("hidden"); i1.value = i2.value = ""; f.onsubmit = null; $("pass-cancel").onclick = null; res(v); }, fail = (t) => { er.textContent = t; er.classList.remove("hidden"); };
+  $("pass-cancel").onclick = () => done(null);
+  f.onsubmit = async (e) => {
+    e.preventDefault(); const pw = i1.value; er.classList.add("hidden");
+    if (mk && pw.length < 8) return fail("Use at least 8 characters.");
+    if (mk && pw !== i2.value) return fail("The two passphrases don't match.");
+    ok.disabled = true;
+    try {
+      if (mk) { const salt = randomB64(16), key = await deriveKey(pw, salt), verify = await makeVerifier(key), r = await send("/api/e2ee", "POST", { salt, verify }); if (!r.ok) return fail((await r.json().catch(() => ({}))).message || "Couldn't save it."); ecfg = { configured: true, salt, verify }; ekey = key; return done(key); }
+      const key = await deriveKey(pw, ecfg.salt, ecfg.iter); if (!(await checkVerifier(key, ecfg.verify))) return fail("Wrong passphrase."); ekey = key; done(key);
+    } catch (err) { if (!err || err.message !== "auth") fail("Something went wrong. Try again."); } finally { ok.disabled = false; }
+  };
+});
+async function ensureKey(create = false) {
+  if (ekey) return ekey;
+  try { ecfg = await (await api("/api/e2ee")).json(); } catch { return null; }
+  if (!ecfg.configured && !create) { toast("Encryption isn't set up yet. Upload with “End-to-end encrypt” turned on to set it up."); return null; }
+  const k = await askPass(ecfg.configured ? "unlock" : "create");
+  if (k) await afterUnlock();
+  return k;
+}
+async function afterUnlock() { await hydrate(baseItems); await hydrate(items); if (!$("view-media").classList.contains("hidden")) drawGrid(); else if (tab === "files") drawFiles(); }
+function lockVault() { ekey = null; for (const u of ethumbs.values()) URL.revokeObjectURL(u); ethumbs.clear(); closeLb(); toast("Locked."); refresh(); }
+async function paintEnc() { // thumbnails of encrypted files are fetched and decrypted here, a few at a time
+  const imgs = [...document.querySelectorAll("img[data-et]")]; let i = 0;
+  const run = async () => { while (i < imgs.length && ekey) { const el = imgs[i++], id = el.dataset.et; try { let u = ethumbs.get(id); if (!u) { const r = await fetch(`/api/media/${id}?thumb=1`, { headers: { "X-CSRF": me.csrf } }); if (!r.ok) continue; u = URL.createObjectURL(await decryptBuffer(ekey, await r.arrayBuffer(), "image/jpeg")); ethumbs.set(id, u); } el.src = u; } catch {} } };
+  await Promise.all([run(), run(), run(), run()]);
+}
+async function decFile(f) { const r = await fetch("/api/media/" + f.id, { headers: { "X-CSRF": me.csrf } }); if (!r.ok) throw new Error("download"); return decryptBuffer(ekey, await r.arrayBuffer(), f.mime); }
+async function downloadEnc(f) {
+  if (!ekey && !(await ensureKey())) return; toast("Decrypting…", 120000);
+  try { const u = URL.createObjectURL(await decFile(f)), a = document.createElement("a"); a.href = u; a.download = f.dn ? f.name : "file"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000); toast("Downloaded " + f.name); } catch { toast("Couldn't decrypt this file."); }
+}
+async function decLb(f, vid) {
+  const seq = ++lbSeq, box = $("lb-media-container");
+  try { const b = await decFile(f); if (seq !== lbSeq) return; if (lbUrl) URL.revokeObjectURL(lbUrl); lbUrl = URL.createObjectURL(b); box.innerHTML = vid ? `<video src="${lbUrl}" controls autoplay playsinline class="max-w-full max-h-[75vh] rounded-lg"></video>` : f.mime === "image/heic" ? `<div class="vx-dec">HEIC preview isn't supported by browsers.<br>Use download to open it.</div>` : `<img src="${lbUrl}" alt="" class="max-w-full max-h-[75vh] object-contain rounded-lg">`; }
+  catch { if (seq === lbSeq) box.innerHTML = '<div class="vx-dec">Couldn\'t decrypt this file.</div>'; }
+}
+const MIME_BY_EXT = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", heic: "image/heic", pdf: "application/pdf", mp4: "video/mp4", mov: "video/quicktime" };
+const mimeOf = (f) => MIME_BY_EXT[ext(f.name)] || FILE_MIME[ext(f.name)] || "";
+
 /* ---------- uploads ---------- */
 const bar = (name, l, t) => { $("upload-progress-container").classList.remove("hidden"); $("uploading-file-name").textContent = name; const p = Math.round((l / t) * 100); $("upload-percent").textContent = p + "%"; $("upload-bar").style.width = p + "%"; };
 const xhrPut = (method, url, body, headers, onp) => new Promise((ok, no) => { const x = new XMLHttpRequest(); if (cur) cur.xhrs.add(x); x.open(method, url); for (const k in headers) x.setRequestHeader(k, headers[k]); x.upload.onprogress = (e) => onp(e.loaded); x.onload = () => ok(x); x.onerror = () => no(new Error("Network error. Check your connection.")); x.onabort = () => no(new Error("Upload cancelled.")); x.send(body); });
-async function thumb(id, f) {
+async function thumb(id, f, ek) {
   try {
     let src, w, h, url = null;
     if (f.type.startsWith("video/")) { url = URL.createObjectURL(f); src = document.createElement("video"); src.muted = true; src.preload = "auto"; src.src = url; await new Promise((ok, no) => { src.onloadeddata = ok; src.onerror = no; }); src.currentTime = Math.min(1, (src.duration || 2) / 2); await new Promise((ok) => { src.onseeked = ok; }); w = src.videoWidth; h = src.videoHeight; }
     else if (f.type.startsWith("image/") && f.type !== "image/heic") { src = await createImageBitmap(f); w = src.width; h = src.height; } else return;
     const sc = Math.min(1, 400 / Math.max(w, h)), c = document.createElement("canvas"); c.width = Math.round(w * sc); c.height = Math.round(h * sc); c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
     if (url) URL.revokeObjectURL(url);
-    const b = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.8)); if (b) await api(`/api/media/${id}/thumb`, { method: "POST", body: b });
+    let b = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.8)); if (b && ek) b = await encryptBlob(ek, b); if (b) await api(`/api/media/${id}/thumb`, { method: "POST", body: b });
   } catch {}
 }
-const upImage = async (f) => { cur = { xhrs: new Set() }; try { const x = await xhrPut("POST", "/api/media/upload", f, { "X-CSRF": me.csrf, "X-Filename": encodeURIComponent(f.name) }, (l) => bar(f.name, l, f.size)); if (x.status !== 201) throw new Error(f.name + ": " + (JSON.parse(x.responseText || "{}").message || "Upload failed.")); const id = JSON.parse(x.responseText).id; await thumb(id, f); return id; } finally { cur = null; } };
-const upVideo = async (f, resume) => {
-  const id = resume ? resume.id : (await jpost("/api/media/video/init", { name: f.name, size: f.size })).id;
+const upImage = async (f, ek) => {
+  cur = { xhrs: new Set() };
+  try {
+    let body = f, hdr = { "X-CSRF": me.csrf, "X-Filename": encodeURIComponent(f.name) };
+    if (ek) { bar("Encrypting " + f.name + "…", 0, 1); body = await encryptBlob(ek, f); hdr = { "X-CSRF": me.csrf, "X-Encrypted": "1", "X-Category": categoryOfName(f.name), "X-Mime": mimeOf(f), "X-Plain-Size": String(f.size), "X-Enc-Name": await encryptText(ek, f.name) }; }
+    const x = await xhrPut("POST", "/api/media/upload", body, hdr, (l) => bar(f.name, l, body.size));
+    if (x.status !== 201) throw new Error(f.name + ": " + (JSON.parse(x.responseText || "{}").message || "Upload failed."));
+    const id = JSON.parse(x.responseText).id; await thumb(id, f, ek); return id;
+  } finally { cur = null; }
+};
+const upVideo = async (f, resume, ek) => {
+  let src = f; if (ek) { bar("Encrypting " + f.name + "…", 0, 1); src = await encryptBlob(ek, f); } // encrypted uploads can't be resumed: a new encryption makes different bytes
+  const id = resume ? resume.id : (await jpost("/api/media/video/init", ek ? { encrypted: true, encName: await encryptText(ek, f.name), mime: mimeOf(f), size: src.size, plainSize: f.size } : { name: f.name, size: f.size })).id;
   const have = resume ? (await jpost(`/api/media/video/${id}/parts`)).parts : [];
   cur = { xhrs: new Set(), cancelled: false }; const parts = []; let done = 0;
   try {
-    for (const pt of planParts(f.size)) {
+    for (const pt of planParts(src.size)) {
       const got = have.find((x) => x.n === pt.n); if (got) { done += pt.end - pt.start; parts.push({ n: pt.n, etag: got.etag }); continue; }
       let etag = null;
       for (let a = 1; a <= 3 && !etag; a++) {
         if (cur.cancelled) throw new Error("Upload cancelled.");
         const { url } = await jpost(`/api/media/video/${id}/part`, { n: pt.n });
-        try { const x = await xhrPut("PUT", url, f.slice(pt.start, pt.end), {}, (l) => bar(f.name, done + l, f.size)); etag = x.status === 200 ? x.getResponseHeader("ETag") : null; if (!etag) throw new Error("The upload was blocked. Check the R2 CORS settings."); } catch (e) { if (a === 3 || cur.cancelled) throw e; }
+        try { const x = await xhrPut("PUT", url, src.slice(pt.start, pt.end), {}, (l) => bar(f.name, done + l, src.size)); etag = x.status === 200 ? x.getResponseHeader("ETag") : null; if (!etag) throw new Error("The upload was blocked. Check the R2 CORS settings."); } catch (e) { if (a === 3 || cur.cancelled) throw e; }
       }
       done += pt.end - pt.start; parts.push({ n: pt.n, etag });
     }
-    $("uploading-file-name").textContent = "Finishing " + f.name + "…"; const fin = await jpost(`/api/media/video/${id}/complete`, { parts }); await thumb(fin.id, f); return fin.id;
+    $("uploading-file-name").textContent = "Finishing " + f.name + "…"; const fin = await jpost(`/api/media/video/${id}/complete`, { parts }); await thumb(fin.id, f, ek); return fin.id;
   } catch (e) { if (cur && cur.cancelled) await api(`/api/media/video/${id}/abort`, { method: "POST" }).catch(() => {}); throw e; } finally { cur = null; }
 };
 const checkFile = (f) => {
@@ -253,12 +327,14 @@ function renderQueue() { // the files chosen so far; each one can be removed bef
 const openUp = () => { $("upload-modal").classList.remove("hidden"); const t = ctx.startsWith("col:") ? $("media-view-title").textContent : ""; $("upload-target").textContent = t ? `Uploads are added to: ${t}` : ""; $("upload-target").classList.toggle("hidden", !t); renderQueue(); };
 function closeUp() { if (cur) { cur.cancelled = true; cur.xhrs.forEach((x) => x.abort()); } $("upload-modal").classList.add("hidden"); $("upload-progress-container").classList.add("hidden"); $("upload-bar").style.width = "0%"; pending = []; renderQueue(); }
 async function runUploads(files) {
-  if (busy || !files.length) return; busy = true; openUp(); let ok = 0; const errs = [], into = ctx.startsWith("col:") ? ctx.slice(4) : ""; // inside an album/folder, new files go into it
+  if (busy || !files.length) return;
+  const wantEnc = $("up-enc").checked, ek = wantEnc ? await ensureKey(true) : null; if (wantEnc && !ek) return toast("Nothing was uploaded: the encryption passphrase was not set.");
+  busy = true; openUp(); let ok = 0; const errs = [], into = ctx.startsWith("col:") ? ctx.slice(4) : ""; // inside an album/folder, new files go into it
   for (const f of files) {
     const bad = checkFile(f); if (bad) { errs.push(bad); continue; }
-    try { const id = await (categoryOfName(f.name) === "video" ? upVideo : upImage)(f); me.used += f.size; ok++; if (into && id) await send(`/api/collections/${into}/items`, "POST", { media_id: id }).catch(() => {}); } catch (m) { errs.push((m && m.message) || String(m)); if (m && m.message === "Upload cancelled.") break; }
+    try { const id = categoryOfName(f.name) === "video" ? await upVideo(f, null, ek) : await upImage(f, ek); me.used += f.size; ok++; if (into && id) await send(`/api/collections/${into}/items`, "POST", { media_id: id }).catch(() => {}); } catch (m) { errs.push((m && m.message) || String(m)); if (m && m.message === "Upload cancelled.") break; }
   }
-  busy = false; closeUp(); toast(errs.length ? errs[errs.length - 1] : `Uploaded ${ok} ${ok === 1 ? "file" : "files"}`, errs.length ? 8000 : 4000); refresh();
+  busy = false; closeUp(); toast(errs.length ? errs[errs.length - 1] : `Uploaded ${ok} ${ok === 1 ? "file" : "files"}${ek ? " (encrypted)" : ""}`, errs.length ? 8000 : 4000); refresh();
 }
 
 /* ---------- actions ---------- */
@@ -309,7 +385,8 @@ async function applySearch() { // media views: best matches first; the filter an
   note.classList.remove("hidden"); note.textContent = "Searching…";
   let d; try { d = await (await api("/api/search?" + prm)).json(); } catch (e) { if (!e || e.message !== "auth") note.textContent = "Search failed. Try again."; return; }
   if (seq !== searchSeq) return; // a newer search is already running
-  items = d.results || [];
+  items = await hydrate(d.results || []); // encrypted names can only be matched here, after decrypting them in the browser
+  { const q = search.toLowerCase(), sn = q.replace(/^#/, ""), seen = new Set(items.map((f) => f.id)), own = baseItems.filter((f) => !seen.has(f.id) && (String(f.serial) === sn || (f.enc && f.dn && f.name.toLowerCase().includes(q)))); items = [...own, ...items]; }
   note.textContent = `${items.length} best ${items.length === 1 ? "match" : "matches"} for “${search}”` + (d.semantic ? (d.analysed === 0 ? " · none of your photos are analysed yet: open Settings → Photo search → Analyse photos" : "") : d.reason === "no_binding" ? " · matching names only: the AI binding is missing on the server (add it in wrangler.jsonc and redeploy)" : ` · matching names only: AI search failed (${d.reason || "unknown error"})`) + (d.pending ? ` · ${d.pending} ${d.pending === 1 ? "photo is" : "photos are"} not analysed yet (Settings → Photo search)` : "");
   drawGrid();
 }
@@ -318,6 +395,7 @@ const ACT = {
   toggleCurrentFavorite: async () => { const f = cur2(); if (!f) return; await send("/api/media/" + f.id, "PATCH", { favorite: !f.favorite }); f.favorite = f.favorite ? 0 : 1; showLb(); },
   closeLightbox: closeLb, prevMedia: () => stepLb(-1), nextMedia: () => stepLb(1),
   closeUploadModal: closeUp,
+  unlockVault: async () => { if (await ensureKey(false)) refresh(); }, setupEnc: async () => { if (await ensureKey(true)) refresh(); }, lockVault,
   startUpload: () => { if (pending.length) { const p = pending; pending = []; renderQueue(); runUploads(p); } else $("modalFileInput").click(); },
   lbAdd: () => { const f = cur2(); if (f) pickCollection([f.id]); },
   lbRemove: async () => { const f = cur2(); if (f && confirm("Remove this file from the collection? The file is kept.")) { await send(`/api/collections/${ctx.slice(4)}/items/${f.id}`, "DELETE"); closeLb(); refresh(); } },
@@ -406,3 +484,5 @@ $("year").textContent = new Date().getFullYear();
 addEventListener("hashchange", render);
 setInterval(() => { if (tab === "overview" && !document.hidden && !busy) renderOverview().catch(() => {}); }, 30000);
 render();
+
+$("lb-download-btn").addEventListener("click", (e) => { const f = cur2(); if (f && f.enc) { e.preventDefault(); downloadEnc(f); } });

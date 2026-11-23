@@ -4,15 +4,16 @@ import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthen
 import { isoBase64URL } from "@simplewebauthn/server/helpers";
 import { OTP_TTL, REC_TTL, challengeState, tokenState } from "./policy.js";
 import { LIMITS, PART, FILE_MIME, categoryOfName, sniffFile, ext, sizeMessage, planParts, validParts, cleanName } from "../public/assets/limits.js";
+import { encSize, ITER } from "../public/assets/e2ee.js";
 import { rand, sha256, hmacHex, hashSecret, verifySecret, same } from "./crypto";
 import { SEARCH_MIN, searchTerms, escapeLike, keywordScore, unit, packVec, dotPacked, rank, cleanIds } from "./search.js";
 export { SecurityState } from "./security";
 
 type AiBinding = { run(model: string, input: unknown): Promise<unknown> };
 interface Env { AI?: AiBinding; ASSETS: Fetcher; MEDIA_BUCKET: R2Bucket; DB: D1Database; SECURITY: DurableObjectNamespace; SETUP_TOKEN?: string; AUDIT_SALT?: string; TOTAL_CAP_BYTES: string; R2_ACCOUNT_ID: string; R2_BUCKET: string; R2_ACCESS_KEY_ID: string; R2_SECRET_ACCESS_KEY: string; BREVO_API_KEY: string; SENDER_EMAIL: string; SENDER_NAME: string; LOGIN_EMAIL?: string; SECURITY_EMAIL?: string; TURNSTILE_SECRET?: string; TURNSTILE_SITE_KEY: string }
-type Up = { id: string; r2_key: string; upload_id: string; name: string; mime: string; size: number };
+type Up = { id: string; r2_key: string; upload_id: string; name: string; mime: string; size: number; enc: number };
 type Sec = { fails: number; wait: number; held: boolean; holdUntil: number; lockdown: boolean };
-type Row = { id: string; r2_key: string; name: string; mime: string; size: number; created_at: number; deleted_at: number | null };
+type Row = { id: string; r2_key: string; name: string; mime: string; size: number; created_at: number; deleted_at: number | null; enc: number };
 const IDLE = 2 * 3600e3, ABS = 7 * 86400e3, COOKIE = "__Host-sid";
 const clean = (s: string) => cleanName(s);
 const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
@@ -214,6 +215,9 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   const hourNow = Math.floor(now / 3600e3);
   const count = (reqs: number, bytes: number) => env.DB.prepare("INSERT INTO traffic_hourly(hour,req,bytes) VALUES(?,?,?) ON CONFLICT(hour) DO UPDATE SET req=req+excluded.req, bytes=bytes+excluded.bytes").bind(hourNow, reqs, bytes).run();
   await count(1, 0);
+  const ENC_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "application/pdf", "video/mp4", "video/quicktime", ...Object.values(FILE_MIME)]);
+  const B64 = /^[A-Za-z0-9+\/=]{16,1400}$/;
+  const nextSerial = async () => { await env.DB.prepare("INSERT OR IGNORE INTO system_settings(key,value) VALUES('serial_counter','0')").run(); return Number((await env.DB.prepare("UPDATE system_settings SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT) WHERE key='serial_counter' RETURNING value").first<{ value: string }>())!.value); }; // never reused, even after deletes
   const used = async () => (await env.DB.prepare("SELECT COALESCE(SUM(size),0) n FROM media_metadata").first<{ n: number }>())!.n;
 
   const reserved = async () => (await env.DB.prepare("SELECT COALESCE(SUM(size),0) n FROM upload_sessions WHERE status='open' AND expires_at>?").bind(now).first<{ n: number }>())!.n;
@@ -256,11 +260,11 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   }
   if (p === "/api/media" && m === "GET") {
     const { like, cond } = scopeOf(url.searchParams.get("kind") ?? "all");
-    return json((await env.DB.prepare(`SELECT id,name,mime,size,created_at,favorite,has_thumb,deleted_at FROM media_metadata WHERE ${cond} AND mime LIKE ? ORDER BY created_at DESC LIMIT 200 OFFSET ?`).bind(like, Math.max(0, Number(url.searchParams.get("offset")) || 0)).all()).results);
+    return json((await env.DB.prepare(`SELECT id,name,mime,size,created_at,favorite,has_thumb,deleted_at,serial,enc,enc_name FROM media_metadata WHERE ${cond} AND mime LIKE ? ORDER BY created_at DESC LIMIT 200 OFFSET ?`).bind(like, Math.max(0, Number(url.searchParams.get("offset")) || 0)).all()).results);
   }
   if (p === "/api/search" && m === "GET") { // best matches first: filename/description words plus meaning (embeddings, so Bangla finds English descriptions)
     const q = (url.searchParams.get("q") ?? "").trim().slice(0, 300), { like, cond } = scopeOf(url.searchParams.get("kind") ?? "all");
-    const pendingN = async () => (await env.DB.prepare("SELECT COUNT(*) n FROM media_metadata WHERE has_thumb=1 AND indexed_at IS NULL AND deleted_at IS NULL").first<{ n: number }>())!.n;
+    const pendingN = async () => (await env.DB.prepare("SELECT COUNT(*) n FROM media_metadata WHERE has_thumb=1 AND enc=0 AND indexed_at IS NULL AND deleted_at IS NULL").first<{ n: number }>())!.n;
     if (!q) return json({ results: [], semantic: false, pending: await pendingN() });
     const why = (e: unknown) => String((e as Error)?.message ?? e).replace(/\s+/g, " ").slice(0, 200); // short, so the page can show the real reason instead of a vague "not available"
     const colQ = url.searchParams.get("collection") ?? "", col = /^[\w-]{1,64}$/.test(colQ) ? colQ : null;
@@ -286,22 +290,22 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
       } catch (e) { reason = why(e); console.error("search_ai_failed", reason); } // falls back to word matching
     }
     const top = rank(hits, 80);
-    const found = top.length ? (await env.DB.prepare(`SELECT id,name,mime,size,created_at,favorite,has_thumb,deleted_at,description FROM media_metadata WHERE id IN (${top.map(() => "?").join(",")})`).bind(...top.map((t) => t.id)).all<{ id: string }>()).results : [];
+    const found = top.length ? (await env.DB.prepare(`SELECT id,name,mime,size,created_at,favorite,has_thumb,deleted_at,description,serial,enc,enc_name FROM media_metadata WHERE id IN (${top.map(() => "?").join(",")})`).bind(...top.map((t) => t.id)).all<{ id: string }>()).results : [];
     const byId = new Map(found.map((r) => [r.id, r]));
     return json({ results: top.flatMap((t) => { const r = byId.get(t.id); return r ? [{ ...r, score: Math.round(t.score * 100) / 100 }] : []; }), semantic, reason, analysed: (await env.DB.prepare("SELECT COUNT(*) n FROM media_vectors").first<{ n: number }>())!.n, pending: await pendingN() });
   }
   if (p === "/api/search/status" && m === "GET") {
-    const s = await env.DB.prepare("SELECT COALESCE(SUM(indexed_at>0),0) done_n, COALESCE(SUM(indexed_at IS NULL AND has_thumb=1 AND deleted_at IS NULL),0) wait_n, COALESCE(SUM(indexed_at=-1),0) fail_n FROM media_metadata").first<{ done_n: number; wait_n: number; fail_n: number }>(); // (INDEXED is an SQL keyword, so it is not used as a column name)
+    const s = await env.DB.prepare("SELECT COALESCE(SUM(indexed_at>0),0) done_n, COALESCE(SUM(indexed_at IS NULL AND has_thumb=1 AND enc=0 AND deleted_at IS NULL),0) wait_n, COALESCE(SUM(indexed_at=-1),0) fail_n FROM media_metadata").first<{ done_n: number; wait_n: number; fail_n: number }>(); // (INDEXED is an SQL keyword, so it is not used as a column name)
     return json({ ai: !!env.AI, indexed: s?.done_n ?? 0, pending: s?.wait_n ?? 0, failed: s?.fail_n ?? 0 });
   }
   if (p === "/api/search/reindex" && m === "POST") { // analyses a few not-yet-described photos per call; the page keeps calling until none are left
     if (!env.AI) return json({ error: "ai_unavailable", message: "The AI binding is missing. Add the \"ai\" binding to wrangler.jsonc and deploy." }, 503);
     if ((await read(req)).retry === true) await env.DB.prepare("UPDATE media_metadata SET indexed_at=NULL WHERE indexed_at=-1").run();
-    const rows = (await env.DB.prepare("SELECT id, r2_key FROM media_metadata WHERE has_thumb=1 AND indexed_at IS NULL AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 3").all<{ id: string; r2_key: string }>()).results;
+    const rows = (await env.DB.prepare("SELECT id, r2_key FROM media_metadata WHERE has_thumb=1 AND enc=0 AND indexed_at IS NULL AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 3").all<{ id: string; r2_key: string }>()).results;
     const res = await Promise.allSettled(rows.map(async (r) => { const o = await env.MEDIA_BUCKET.get(r.r2_key + ".thumb"); if (!o) throw new Error("no_thumbnail"); await indexMedia(env, r.id, await o.arrayBuffer()); }));
     let done = 0, failed = 0, error = "";
     for (const [i, x] of res.entries()) { if (x.status === "fulfilled") done++; else { failed++; const m = String(x.reason?.message ?? x.reason).replace(/\s+/g, " ").slice(0, 200); error ||= m; console.error("index_failed", m); await markFailed(env, rows[i].id); } }
-    const left = (await env.DB.prepare("SELECT COUNT(*) n FROM media_metadata WHERE has_thumb=1 AND indexed_at IS NULL AND deleted_at IS NULL").first<{ n: number }>())!.n;
+    const left = (await env.DB.prepare("SELECT COUNT(*) n FROM media_metadata WHERE has_thumb=1 AND enc=0 AND indexed_at IS NULL AND deleted_at IS NULL").first<{ n: number }>())!.n;
     return json({ done, failed, left, error });
   }
   if (p === "/api/media/bulk" && m === "POST") { // several files at once; the page sends at most MAX_BULK ids per call
@@ -339,12 +343,13 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (tm && m === "POST") { // small JPEG made in the browser
     const len = Number(req.headers.get("content-length") ?? 0);
     if (!len || len > 300000) return json({ error: "too_large" }, 413);
-    const row = await env.DB.prepare("SELECT r2_key FROM media_metadata WHERE id=?").bind(tm[1]).first<{ r2_key: string }>();
-    const buf = await req.arrayBuffer(), hd = new Uint8Array(buf, 0, Math.min(3, buf.byteLength));
-    if (!row || buf.byteLength !== len || !(hd[0] === 0xff && hd[1] === 0xd8 && hd[2] === 0xff)) return json({ error: "invalid" }, 400);
-    await env.MEDIA_BUCKET.put(row.r2_key + ".thumb", buf, { httpMetadata: { contentType: "image/jpeg" } });
+    const row = await env.DB.prepare("SELECT r2_key, enc FROM media_metadata WHERE id=?").bind(tm[1]).first<{ r2_key: string; enc: number }>();
+    const buf = await req.arrayBuffer(), hd = new Uint8Array(buf, 0, Math.min(4, buf.byteLength));
+    const okHead = row?.enc ? hd[0] === 0x56 && hd[1] === 0x45 && hd[2] === 0x43 && hd[3] === 0x31 : hd[0] === 0xff && hd[1] === 0xd8 && hd[2] === 0xff; // encrypted files get an encrypted thumbnail ("VEC1"); the server cannot look inside it
+    if (!row || buf.byteLength !== len || !okHead) return json({ error: "invalid" }, 400);
+    await env.MEDIA_BUCKET.put(row.r2_key + ".thumb", buf, { httpMetadata: { contentType: row.enc ? "application/octet-stream" : "image/jpeg" } });
     await env.DB.prepare("UPDATE media_metadata SET has_thumb=1 WHERE id=?").bind(tm[1]).run();
-    if (env.AI) ctx.waitUntil(indexMedia(env, tm[1], buf).catch(async (e) => { console.error("index_failed", (e as Error).message); await markFailed(env, tm[1]); })); // describe it in the background; the upload does not wait
+    if (env.AI && !row.enc) ctx.waitUntil(indexMedia(env, tm[1], buf).catch(async (e) => { console.error("index_failed", (e as Error).message); await markFailed(env, tm[1]); })); // describe it in the background; the upload does not wait
     return json({ ok: true }, 201);
   }
   // albums (many-to-many) and folders (a file lives in at most one)
@@ -360,7 +365,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (!col) return json({ error: "not_found" }, 404);
     if (!cm[2] && m === "PATCH") { const n = clean(String((await read(req)).name ?? "")).trim(); if (!n) return json({ error: "invalid" }, 400); await env.DB.prepare("UPDATE collections SET name=? WHERE id=?").bind(n, col.id).run(); return json({ ok: true }); }
     if (!cm[2] && m === "DELETE") { await env.DB.batch([env.DB.prepare("DELETE FROM collection_items WHERE collection_id=?").bind(col.id), env.DB.prepare("DELETE FROM collections WHERE id=?").bind(col.id)]); return json({ ok: true }); }
-    if (cm[2] === "media" && m === "GET") return json((await env.DB.prepare("SELECT mm.id,mm.name,mm.mime,mm.size,mm.created_at,mm.favorite,mm.has_thumb FROM collection_items i JOIN media_metadata mm ON mm.id=i.media_id WHERE i.collection_id=? AND mm.deleted_at IS NULL ORDER BY mm.created_at DESC").bind(col.id).all()).results);
+    if (cm[2] === "media" && m === "GET") return json((await env.DB.prepare("SELECT mm.id,mm.name,mm.mime,mm.size,mm.created_at,mm.favorite,mm.has_thumb,mm.serial,mm.enc,mm.enc_name FROM collection_items i JOIN media_metadata mm ON mm.id=i.media_id WHERE i.collection_id=? AND mm.deleted_at IS NULL ORDER BY mm.created_at DESC").bind(col.id).all()).results);
     if (cm[2] === "items" && m === "POST") {
       const mid = String((await read(req)).media_id ?? "");
       if (!(await env.DB.prepare("SELECT 1 x FROM media_metadata WHERE id=?").bind(mid).first())) return json({ error: "not_found" }, 404);
@@ -394,6 +399,29 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   }
   const pk = /^\/api\/passkeys\/([\w-]+)$/.exec(p);
   if (pk && m === "DELETE") { if (!(await secretOk((await read(req)).secret))) return noSecret(); await env.DB.prepare("DELETE FROM auth_factors WHERE id=?").bind(pk[1]).run(); await audit("passkey_removed"); await mail(secEmail, "Passkey removed", "A passkey was removed from your vault."); return json({ ok: true }); }
+  if (p === "/api/e2ee" && m === "GET") { // only the public parts: salt and a check value. The passphrase and the key never reach the server.
+    const g = async (k: string) => (await env.DB.prepare("SELECT value v FROM system_settings WHERE key=?").bind(k).first<{ v: string }>())?.v ?? null, salt = await g("e2ee_salt"), verify = await g("e2ee_verify");
+    return json(salt && verify ? { configured: true, salt, verify, iter: ITER } : { configured: false });
+  }
+  if (p === "/api/e2ee" && m === "POST") { // set once
+    if (await env.DB.prepare("SELECT 1 x FROM system_settings WHERE key='e2ee_salt'").first()) return json({ error: "exists", message: "Encryption is already set up." }, 409);
+    const b = await read(req), salt = String(b.salt ?? ""), verify = String(b.verify ?? "");
+    if (!B64.test(salt) || !B64.test(verify)) return json({ error: "invalid" }, 400);
+    await env.DB.batch([env.DB.prepare("INSERT INTO system_settings(key,value) VALUES('e2ee_salt',?)").bind(salt), env.DB.prepare("INSERT INTO system_settings(key,value) VALUES('e2ee_verify',?)").bind(verify)]);
+    await audit("e2ee_enabled"); return json({ ok: true }, 201);
+  }
+  if (p === "/api/media/upload" && m === "POST" && req.headers.get("x-encrypted") === "1") { // already encrypted in the browser: the server only checks sizes and stores the bytes
+    const len = Number(req.headers.get("content-length") ?? 0), cat = req.headers.get("x-category") ?? "", mime = req.headers.get("x-mime") ?? "", plain = Number(req.headers.get("x-plain-size")), encName = req.headers.get("x-enc-name") ?? "";
+    if ((cat !== "image" && cat !== "file") || !ENC_MIMES.has(mime) || mime.startsWith("video/") || !Number.isInteger(plain) || plain <= 0 || len !== encSize(plain) || !B64.test(encName)) return json({ error: "invalid", message: "The encrypted upload was not valid." }, 400);
+    if (plain > LIMITS[cat]) return json({ error: "too_large", message: "This file is over the size limit." }, 413);
+    if ((await used()) + (await reserved()) + len > Number(env.TOTAL_CAP_BYTES)) return json({ error: "storage_full", message: "Not enough storage left under your configured limit." }, 413);
+    const buf = await req.arrayBuffer(), hd = new Uint8Array(buf, 0, 4);
+    if (buf.byteLength !== len || hd[0] !== 0x56 || hd[1] !== 0x45 || hd[2] !== 0x43 || hd[3] !== 0x31) return json({ error: "invalid", message: "The encrypted upload was not valid." }, 400);
+    const id = crypto.randomUUID(), key = crypto.randomUUID(), serial = await nextSerial();
+    await env.MEDIA_BUCKET.put(key, buf, { httpMetadata: { contentType: "application/octet-stream" } });
+    await env.DB.prepare("INSERT INTO media_metadata(id,r2_key,name,mime,size,created_at,serial,enc,enc_name) VALUES(?,?,?,?,?,?,?,1,?)").bind(id, key, `Encrypted #${serial}`, mime, len, now, serial, encName).run();
+    return json({ id }, 201);
+  }
   if (p === "/api/media/upload" && m === "POST") { // images and PDFs only; videos use direct multipart below
     const len = Number(req.headers.get("content-length") ?? 0), name = clean(safeDecode(req.headers.get("x-filename") ?? "file")), cat = categoryOfName(name);
     if (!len) return json({ error: "empty", message: "The file is empty." }, 400);
@@ -405,20 +433,21 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (buf.byteLength !== len || !mime) return json({ error: "type", message: "This file's contents don't match its type." }, 415);
     const id = crypto.randomUUID(), key = crypto.randomUUID();
     await env.MEDIA_BUCKET.put(key, buf, { httpMetadata: { contentType: mime } });
-    await env.DB.prepare("INSERT INTO media_metadata(id,r2_key,name,mime,size,created_at) VALUES(?,?,?,?,?,?)").bind(id, key, name, mime, len, now).run();
+    await env.DB.prepare("INSERT INTO media_metadata(id,r2_key,name,mime,size,created_at,serial) VALUES(?,?,?,?,?,?,?)").bind(id, key, name, mime, len, now, await nextSerial()).run();
     return json({ id }, 201);
   }
-  if (p === "/api/media/video/pending" && m === "GET") return json((await env.DB.prepare("SELECT id,name,size FROM upload_sessions WHERE session_hash=? AND status='open' AND expires_at>? ORDER BY created_at DESC").bind(sh, now).all()).results);
+  if (p === "/api/media/video/pending" && m === "GET") return json((await env.DB.prepare("SELECT id,name,size,enc FROM upload_sessions WHERE session_hash=? AND status='open' AND expires_at>? ORDER BY created_at DESC").bind(sh, now).all()).results);
   if (p === "/api/media/video/init" && m === "POST") {
-    const b = await read(req), name = clean(String(b.name ?? "")), size = Number(b.size);
-    if (categoryOfName(name) !== "video" || !Number.isInteger(size) || size <= 0) return json({ error: "type", message: "Only MP4 and MOV videos can be uploaded this way." }, 415);
-    if (size > LIMITS.video) return json({ error: "too_large", message: sizeMessage(name, size, "video") }, 413);
+    const b = await read(req), isEnc = b.encrypted === true, size = Number(b.size), plain = Number(b.plainSize), encMime = String(b.mime ?? "");
+    const name = isEnc ? String(b.encName ?? "") : clean(String(b.name ?? "")); // encrypted: the name is ciphertext the server cannot read
+    if (isEnc ? !B64.test(name) || (encMime !== "video/mp4" && encMime !== "video/quicktime") || !Number.isInteger(plain) || plain <= 0 || size !== encSize(plain) : categoryOfName(name) !== "video" || !Number.isInteger(size) || size <= 0) return json({ error: "type", message: "Only MP4 and MOV videos can be uploaded this way." }, 415);
+    if ((isEnc ? plain : size) > LIMITS.video) return json({ error: "too_large", message: isEnc ? "This video is over the size limit." : sizeMessage(name, size, "video") }, 413);
     const open = (await env.DB.prepare("SELECT COUNT(*) n FROM upload_sessions WHERE status='open' AND expires_at>?").bind(now).first<{ n: number }>())!.n;
     if (open >= 3) return json({ error: "busy", message: "Too many uploads in progress. Finish or cancel one first." }, 429);
     if ((await used()) + (await reserved()) + size > Number(env.TOTAL_CAP_BYTES)) return json({ error: "storage_full", message: "Not enough storage left under your configured limit." }, 413);
-    const mime = name.toLowerCase().endsWith(".mov") ? "video/quicktime" : "video/mp4", key = crypto.randomUUID(), id = crypto.randomUUID();
+    const mime = isEnc ? encMime : name.toLowerCase().endsWith(".mov") ? "video/quicktime" : "video/mp4", key = crypto.randomUUID(), id = crypto.randomUUID();
     const uploadId = await s3.create(env, key, mime);
-    await env.DB.prepare("INSERT INTO upload_sessions(id,session_hash,r2_key,upload_id,name,mime,size,status,created_at,expires_at) VALUES(?,?,?,?,?,?,?,'open',?,?)").bind(id, sh, key, uploadId, name, mime, size, now, now + 6 * 3600e3).run();
+    await env.DB.prepare("INSERT INTO upload_sessions(id,session_hash,r2_key,upload_id,name,mime,size,status,created_at,expires_at,enc) VALUES(?,?,?,?,?,?,?,'open',?,?,?)").bind(id, sh, key, uploadId, name, mime, size, now, now + 6 * 3600e3, isEnc ? 1 : 0).run();
     return json({ id, partSize: PART }, 201);
   }
   const vm = /^\/api\/media\/video\/([\w-]+)\/(part|parts|complete|abort)$/.exec(p);
@@ -436,11 +465,12 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     await s3.complete(env, u.r2_key, u.upload_id, parts);
     const head = await env.MEDIA_BUCKET.head(u.r2_key);
     if (!head || head.size !== u.size) return fail(422, "The uploaded file didn't match its declared size. Try again.");
-    const first = await env.MEDIA_BUCKET.get(u.r2_key, { range: { offset: 0, length: 16 } }), mime = first ? sniff(new Uint8Array(await first.arrayBuffer())) : null;
+    const first = await env.MEDIA_BUCKET.get(u.r2_key, { range: { offset: 0, length: 16 } }), fb = first ? new Uint8Array(await first.arrayBuffer()) : null, mime = fb ? (u.enc ? (fb[0] === 0x56 && fb[1] === 0x45 && fb[2] === 0x43 && fb[3] === 0x31 ? u.mime : null) : sniff(fb)) : null; // encrypted videos can't be sniffed: only the "VEC1" header is checked
     if (!mime || !mime.startsWith("video/")) return fail(415, "That file isn't a valid MP4 or MOV video.");
     if ((await used()) + u.size > Number(env.TOTAL_CAP_BYTES)) return fail(413, "Not enough storage left under your configured limit.");
     const id = crypto.randomUUID();
-    await env.DB.prepare("INSERT INTO media_metadata(id,r2_key,name,mime,size,created_at) VALUES(?,?,?,?,?,?)").bind(id, u.r2_key, u.name, u.mime, u.size, now).run();
+    const serial = await nextSerial();
+    await env.DB.prepare("INSERT INTO media_metadata(id,r2_key,name,mime,size,created_at,serial,enc,enc_name) VALUES(?,?,?,?,?,?,?,?,?)").bind(id, u.r2_key, u.enc ? `Encrypted #${serial}` : u.name, u.mime, u.size, now, serial, u.enc ? 1 : 0, u.enc ? u.name : null).run();
     await env.DB.prepare("UPDATE upload_sessions SET status='done' WHERE id=?").bind(u.id).run();
     return json({ id }, 201);
   }
@@ -456,12 +486,12 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
       const b = await read(req);
       if (b.restore === true) await env.DB.prepare("UPDATE media_metadata SET deleted_at=NULL WHERE id=?").bind(row.id).run();
       if (typeof b.favorite === "boolean") await env.DB.prepare("UPDATE media_metadata SET favorite=? WHERE id=?").bind(b.favorite ? 1 : 0, row.id).run();
-      if (typeof b.name === "string") { const n = clean(b.name); if (!n) return json({ error: "invalid" }, 400); await env.DB.prepare("UPDATE media_metadata SET name=? WHERE id=?").bind(n, row.id).run(); }
+      if (typeof b.name === "string" && !row.enc) { const n = clean(b.name); if (!n) return json({ error: "invalid" }, 400); await env.DB.prepare("UPDATE media_metadata SET name=? WHERE id=?").bind(n, row.id).run(); }
       return json({ ok: true });
     }
     if (m === "GET") {
       if (url.searchParams.has("thumb")) { const t = await env.MEDIA_BUCKET.get(row.r2_key + ".thumb"); return t ? new Response(t.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "no-store" } }) : json({ error: "not_found" }, 404); }
-      const h: Record<string, string> = { "Content-Type": row.mime, "Cache-Control": "no-store", "Accept-Ranges": "bytes", "Content-Disposition": `${url.searchParams.has("download") || !(/^(image|video)\//.test(row.mime) || row.mime === "application/pdf") ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(row.name)}` };
+      const h: Record<string, string> = { "Content-Type": row.enc ? "application/octet-stream" : row.mime, "Cache-Control": "no-store", "Accept-Ranges": "bytes", "Content-Disposition": row.enc ? "attachment; filename=\"encrypted.bin\"" : `${url.searchParams.has("download") || !(/^(image|video)\//.test(row.mime) || row.mime === "application/pdf") ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(row.name)}` };
       const rg = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get("range") ?? "");
       if (rg && (rg[1] || rg[2])) {
         const a = rg[1] === "" ? row.size - Number(rg[2]) : Number(rg[1]), b = rg[1] === "" || rg[2] === "" ? row.size - 1 : Math.min(Number(rg[2]), row.size - 1);
