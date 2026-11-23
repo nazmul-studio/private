@@ -135,17 +135,20 @@ function showLb() {
   $("lb-title").textContent = lbl(f); $("lb-meta").textContent = `${fmt(f.size)} · ${new Date(f.created_at).toLocaleDateString()}${tr && f.deleted_at ? ` · deleted for good in ${daysLeft(f)} days` : ""}`;
   $("lb-desc").textContent = f.description || ""; $("lb-desc").classList.toggle("hidden", !f.description);
   $("lb-index-counter").textContent = `${lbIdx + 1} / ${lbList.length}`; $("lb-type-badge").textContent = vid ? "VIDEO" : "PHOTO";
-  $("lb-media-container").innerHTML = f.enc ? '<div class="vx-dec">Decrypting…</div>' : vid ? `<video src="${u}" controls autoplay playsinline class="max-w-full max-h-[75vh] rounded-lg"></video>` : f.mime === "image/heic" ? `<div class="text-xs font-mono text-slate-400 text-center p-8">HEIC preview isn't supported by browsers.<br>Use download to open it.</div>` : `<img src="${u}" alt="${esc(f.name)}" class="max-w-full max-h-[75vh] object-contain rounded-lg">`;
+  $("lb-media-container").innerHTML = f.enc ? (ethumbs.get(f.id) ? `<img src="${ethumbs.get(f.id)}" alt="" class="vx-blur max-w-full max-h-[75vh] object-contain rounded-lg">` : '<div class="vx-dec">Decrypting…</div>') : vid ? `<video src="${u}"${f.has_thumb ? ` poster="${u}?thumb=1"` : ""} controls autoplay playsinline preload="auto" class="max-w-full max-h-[75vh] rounded-lg"></video>` : f.mime === "image/heic" ? `<div class="text-xs font-mono text-slate-400 text-center p-8">HEIC preview isn't supported by browsers.<br>Use download to open it.</div>` : `<img src="${f.has_thumb ? u + "?thumb=1" : u}" data-full="${u}" alt="${esc(f.name)}" class="${f.has_thumb ? "vx-blur " : ""}max-w-full max-h-[75vh] object-contain rounded-lg">`;
+  { const im = $("lb-media-container").querySelector("img[data-full]"); if (im && f.has_thumb) { const pre = new Image(); pre.onload = () => { if (im.isConnected) { im.src = im.dataset.full; im.classList.remove("vx-blur"); } }; pre.src = im.dataset.full; } } // the small preview shows at once; the full-quality image replaces it when it has loaded
   if (f.enc) decLb(f, vid);
   $("lb-fav-btn").classList.toggle("hidden", tr); $("lb-fav-btn").classList.toggle("text-amber-400", !!f.favorite); $("lb-fav-btn").classList.toggle("text-slate-400", !f.favorite);
   $("lb-download-btn").href = f.enc ? "#" : u + "?download=1"; $("lb-add-btn").classList.toggle("hidden", tr); $("lb-rm-btn").classList.toggle("hidden", !col);
   $("lb-restore-btn").classList.toggle("hidden", !tr); $("lb-del-btn").classList.remove("hidden"); $("lb-del-btn").title = tr ? "Delete forever" : "Move to Trash";
 }
-const closeLb = () => { lbSeq++; if (lbUrl) { URL.revokeObjectURL(lbUrl); lbUrl = null; } $("lightbox").classList.add("hidden"); $("lb-media-container").innerHTML = ""; };
+let lbPushed = false;
+const closeLb = () => { if (lbPushed) { lbPushed = false; history.back(); } lbSeq++; if (lbUrl) { URL.revokeObjectURL(lbUrl); lbUrl = null; } $("lightbox").classList.add("hidden"); $("lb-media-container").innerHTML = ""; };
 const openLb = async (id) => {
   const f = items.find((x) => x.id === id); if (f && f.enc && !ekey && !(await ensureKey())) return;
   const i = lbList.findIndex((x) => x.id === id); if (i < 0) return f && f.enc ? downloadEnc(f) : window.open("/api/media/" + id, "_blank", "noopener");
   lbIdx = i; showLb(); $("lightbox").classList.remove("hidden");
+  if (!lbPushed) { history.pushState({ lb: 1 }, ""); lbPushed = true; } // the phone's Back button closes the viewer instead of leaving the page
 };
 const stepLb = (d) => { if (!lbList.length) return; lbIdx = (lbIdx + d + lbList.length) % lbList.length; showLb(); };
 
@@ -486,3 +489,5 @@ setInterval(() => { if (tab === "overview" && !document.hidden && !busy) renderO
 render();
 
 $("lb-download-btn").addEventListener("click", (e) => { const f = cur2(); if (f && f.enc) { e.preventDefault(); downloadEnc(f); } });
+window.addEventListener("popstate", () => { if (lbPushed && !$("lightbox").classList.contains("hidden")) { lbPushed = false; closeLb(); } });
+$("lightbox").addEventListener("click", (e) => { if (e.target === e.currentTarget || e.target.id === "lb-stage") closeLb(); }); // tapping the dark area closes it too

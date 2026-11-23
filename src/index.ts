@@ -205,16 +205,15 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   // ---- everything below needs a valid session ----
   const sid = /(?:^|; )__Host-sid=([a-f0-9]+)/.exec(req.headers.get("Cookie") ?? "")?.[1];
   const sh = sid ? await sha256(sid) : "", now = Date.now();
-  const ses = sid ? await env.DB.prepare("SELECT csrf, created_at, last_seen FROM active_sessions WHERE id_hash=?").bind(sh).first<{ csrf: string; created_at: number; last_seen: number }>() : null;
+  const [ses, sec] = await Promise.all([sid ? env.DB.prepare("SELECT csrf, created_at, last_seen FROM active_sessions WHERE id_hash=?").bind(sh).first<{ csrf: string; created_at: number; last_seen: number }>() : Promise.resolve(null), st("state")]); // looked up together: one round trip less per request
   if (!ses || now - ses.last_seen > IDLE || now - ses.created_at > ABS) { if (ses) await env.DB.prepare("DELETE FROM active_sessions WHERE id_hash=?").bind(sh).run(); return json({ error: "unauthorized" }, 401); }
-  const sec = await st("state");
   if (sec.lockdown) return json({ error: "lockdown" }, 423);
   if (sec.held && p !== "/api/auth/me" && p !== "/api/auth/logout") return json({ error: "maintenance", holdUntil: sec.holdUntil }, 503); // photos, videos and files are unreachable during a hold
   if (m !== "GET" && !same(req.headers.get("X-CSRF") ?? "", ses.csrf)) return json({ error: "bad_csrf" }, 403);
-  await env.DB.prepare("UPDATE active_sessions SET last_seen=? WHERE id_hash=?").bind(now, sh).run();
+  if (now - ses.last_seen > 60e3) ctx.waitUntil(env.DB.prepare("UPDATE active_sessions SET last_seen=? WHERE id_hash=?").bind(now, sh).run().catch(() => {})); // at most once a minute, and the response does not wait for it
   const hourNow = Math.floor(now / 3600e3);
   const count = (reqs: number, bytes: number) => env.DB.prepare("INSERT INTO traffic_hourly(hour,req,bytes) VALUES(?,?,?) ON CONFLICT(hour) DO UPDATE SET req=req+excluded.req, bytes=bytes+excluded.bytes").bind(hourNow, reqs, bytes).run();
-  await count(1, 0);
+  ctx.waitUntil(count(1, 0).catch(() => {})); // traffic counters are written in the background
   const ENC_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "application/pdf", "video/mp4", "video/quicktime", ...Object.values(FILE_MIME)]);
   const B64 = /^[A-Za-z0-9+\/=]{16,1400}$/;
   const nextSerial = async () => { await env.DB.prepare("INSERT OR IGNORE INTO system_settings(key,value) VALUES('serial_counter','0')").run(); return Number((await env.DB.prepare("UPDATE system_settings SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT) WHERE key='serial_counter' RETURNING value").first<{ value: string }>())!.value); }; // never reused, even after deletes
@@ -490,19 +489,27 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
       return json({ ok: true });
     }
     if (m === "GET") {
-      if (url.searchParams.has("thumb")) { const t = await env.MEDIA_BUCKET.get(row.r2_key + ".thumb"); return t ? new Response(t.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "no-store" } }) : json({ error: "not_found" }, 404); }
-      const h: Record<string, string> = { "Content-Type": row.enc ? "application/octet-stream" : row.mime, "Cache-Control": "no-store", "Accept-Ranges": "bytes", "Content-Disposition": row.enc ? "attachment; filename=\"encrypted.bin\"" : `${url.searchParams.has("download") || !(/^(image|video)\//.test(row.mime) || row.mime === "application/pdf") ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(row.name)}` };
+      // Caching: encrypted bytes are useless without the key, so they are cached for good. Plain files are re-checked with an ETag each time (nothing is re-sent when unchanged) and never shared; small thumbnails are kept for a day.
+      const cc = row.enc ? "private, max-age=31536000, immutable" : "private, no-cache", cond = req.headers.get("if-none-match") ? { onlyIf: req.headers } : {};
+      if (url.searchParams.has("thumb")) {
+        const t = await env.MEDIA_BUCKET.get(row.r2_key + ".thumb", cond); if (!t) return json({ error: "not_found" }, 404);
+        const th = { "Cache-Control": row.enc ? cc : "private, max-age=86400", ETag: t.httpEtag };
+        return "body" in t && t.body ? new Response(t.body, { headers: { ...th, "Content-Type": row.enc ? "application/octet-stream" : "image/jpeg" } }) : new Response(null, { status: 304, headers: th });
+      }
+      const h: Record<string, string> = { "Content-Type": row.enc ? "application/octet-stream" : row.mime, "Cache-Control": cc, "Accept-Ranges": "bytes", "Content-Disposition": row.enc ? "attachment; filename=\"encrypted.bin\"" : `${url.searchParams.has("download") || !(/^(image|video)\//.test(row.mime) || row.mime === "application/pdf") ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(row.name)}` };
       const rg = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get("range") ?? "");
       if (rg && (rg[1] || rg[2])) {
         const a = rg[1] === "" ? row.size - Number(rg[2]) : Number(rg[1]), b = rg[1] === "" || rg[2] === "" ? row.size - 1 : Math.min(Number(rg[2]), row.size - 1);
         if (a < 0 || a > b || a >= row.size) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${row.size}` } });
         const o = await env.MEDIA_BUCKET.get(row.r2_key, { range: { offset: a, length: b - a + 1 } });
-        if (o) await count(0, b - a + 1);
-        return o ? new Response(o.body, { status: 206, headers: { ...h, "Content-Range": `bytes ${a}-${b}/${row.size}`, "Content-Length": String(b - a + 1) } }) : json({ error: "not_found" }, 404);
+        if (!o) return json({ error: "not_found" }, 404);
+        ctx.waitUntil(count(0, b - a + 1).catch(() => {}));
+        return new Response(o.body, { status: 206, headers: { ...h, ETag: o.httpEtag, "Content-Range": `bytes ${a}-${b}/${row.size}`, "Content-Length": String(b - a + 1) } });
       }
-      const o = await env.MEDIA_BUCKET.get(row.r2_key);
-      if (o) await count(0, row.size);
-      return o ? new Response(o.body, { headers: { ...h, "Content-Length": String(row.size) } }) : json({ error: "not_found" }, 404);
+      const o = await env.MEDIA_BUCKET.get(row.r2_key, cond); if (!o) return json({ error: "not_found" }, 404);
+      if (!("body" in o) || !o.body) return new Response(null, { status: 304, headers: { "Cache-Control": cc, ETag: o.httpEtag } });
+      ctx.waitUntil(count(0, row.size).catch(() => {}));
+      return new Response(o.body, { headers: { ...h, ETag: o.httpEtag, "Content-Length": String(row.size) } });
     }
   }
   return json({ error: "not_found" }, 404);

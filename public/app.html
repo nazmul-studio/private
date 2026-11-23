@@ -575,7 +575,8 @@
     </div>
 
     <!-- Lightbox Stage -->
-    <div class="relative flex-1 flex items-center justify-center p-3 overflow-hidden">
+    <div id="lb-stage" class="relative flex-1 flex items-center justify-center p-3 overflow-hidden">
+      <button data-act="closeLightbox" class="vx-lbclose" title="Close" aria-label="Close"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg></button>
       <button data-act="prevMedia" class="absolute left-3 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-xl bg-black/60 hover:bg-cyan-500/20 text-white hover:text-cyan-400 border border-blue-900/40 transition-all cursor-pointer">
         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
       </button>
