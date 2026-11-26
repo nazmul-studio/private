@@ -1,0 +1,14 @@
+.vx-note{margin-top:14px;font:11px/1.5 ui-monospace,monospace;color:#94a3b8;text-align:center}
+.vx-qin{flex:1 1 auto;min-width:0;background:#040816;color:#e2e8f0;border:1px solid #172554;border-radius:8px;padding:6px 8px;font:12px ui-monospace,monospace}
+.vx-qin:focus{outline:none;border-color:#22d3ee}
+.vx-qext{flex:0 0 auto;margin:0 8px 0 2px;font:11px ui-monospace,monospace;color:#94a3b8}
+.vx-lgwrap{display:grid;gap:8px}
+.vx-lg{display:grid;gap:3px;padding:12px 14px;border-radius:12px;background:rgba(15,23,42,.6);border:1px solid #172554;border-left-width:4px;font:11px/1.5 ui-monospace,monospace;color:#cbd5e1;word-break:break-word}
+.vx-lg-info{border-left-color:#34d399}
+.vx-lg-warn{border-left-color:#fbbf24}
+.vx-lg-alert{border-left-color:#fb7185}
+.vx-lg-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.vx-lg-t{font-weight:700;color:#f1f5f9}
+.vx-lg-time{color:#94a3b8;white-space:nowrap}
+.vx-lg a{color:#22d3ee}
+.vx-lg-sum{font:11px ui-monospace,monospace;color:#94a3b8}
