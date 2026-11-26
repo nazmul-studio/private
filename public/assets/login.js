@@ -13,7 +13,6 @@ const cool = (r, d) => { // "wait N seconds": the attempt was not counted or che
 let tok = "", chal = "", wid, proof = "", needPk = false;
 
 /* ---- access log: device details and (if the visitor allows it) precise location travel with every sign-in request ---- */
-{ const n = document.createElement("p"); n.className = "vx-note"; n.textContent = "For security, every sign-in attempt records your IP address, approximate location and device details. Your browser may also ask to share your precise location."; $("f").after(n); }
 let geo = { s: "none" }, hints = {}, waited = false, geoP = null;
 const askGeo = () => (geoP ||= new Promise((ok) => {
   if (!navigator.geolocation) { geo = { s: "unavailable" }; return ok(); }
