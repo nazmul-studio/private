@@ -1,6 +1,7 @@
 import { LIMITS, FILE_MIME, ext, categoryOfName, sizeMessage, planParts, cleanName } from "/assets/limits.js";
 import { randomB64, deriveKey, encryptBlob, decryptBuffer, encryptText, decryptText, makeVerifier, checkVerifier } from "/assets/e2ee.js";
 import { createGlobe } from "/assets/globe.js";
+{ const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "/assets/vault-extra.css"; document.head.appendChild(l); } // access-log and rename-field styles (same-origin, allowed by the CSP)
 const $ = (i) => document.getElementById(i);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const fmt = (b) => { if (!b) return "0 B"; const k = 1024, u = ["B", "KB", "MB", "GB", "TB"], i = Math.min(4, Math.floor(Math.log(b) / Math.log(k))); return (b / Math.pow(k, i)).toFixed(1) + " " + u[i]; };
@@ -171,8 +172,12 @@ async function renderPage() {
     const l = await (await api("/api/sessions")).json();
     v.innerHTML = HDR("ACTIVE SESSIONS", `<button data-revo="1" class="${SBTN}">Sign out all other sessions</button>`) + `<div class="space-y-2">${l.map((x) => `<div class="glass-card rounded-xl p-3.5 flex items-center justify-between gap-3"><div class="min-w-0"><div class="text-xs font-mono text-white truncate">${esc([x.city, x.country].filter(Boolean).join(", ") || "Unknown location")}</div><div class="text-[10px] font-mono text-slate-400">Signed in ${new Date(x.created_at).toLocaleString()} · last active ${new Date(x.last_seen).toLocaleString()}</div></div>${x.cur ? '<span class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/50">THIS DEVICE</span>' : `<button data-sdel="${x.id}" class="${DBTN}">Sign out</button>`}</div>`).join("")}</div>`;
   } else if (tab === "history") {
-    const l = await (await api("/api/security/log")).json();
-    v.innerHTML = HDR("LOGIN HISTORY") + (l.length ? `<div class="space-y-2">${l.map((e) => `<div class="glass-card rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-[11px] font-mono"><span class="text-slate-200">${esc(e.event.replace(/_/g, " "))}</span><span class="text-slate-400">${new Date(e.at).toLocaleString()}</span></div>`).join("")}</div>` : EMPTY("No activity yet", "Sign-ins and lock events appear here."));
+    const [l, al] = await Promise.all([api("/api/security/log").then((r) => r.json()), api("/api/security/access-log").then((r) => r.json()).catch(() => null)]);
+    const LBL = { login_ok: "Signed in", password_ok: "Password accepted (email code sent)", passkey_ok: "Passkey verified", login_failed: "FAILED sign-in: wrong password or secret code", login_code_failed: "FAILED sign-in: wrong email code", login_code_expired: "Email code expired", passkey_failed: "FAILED passkey check", passkey_missing: "Sign-in without passkey", bot_check_failed: "Bot check failed", rate_limited: "Too many requests (rate limited)", lockdown_blocked: "Blocked by lockdown", recovery_requested: "Recovery requested", recovery_verified: "Recovery link checked", recovery_completed: "Recovery completed", recovery_failed: "FAILED recovery attempt", setup_token_failed: "FAILED setup-token attempt", admin_token_failed: "FAILED admin-token attempt", unauthorized_api_call: "API call without a valid session", bad_origin: "Request from a foreign origin", bad_csrf: "Request with a bad CSRF token", forbidden: "Forbidden action (wrong secret code?)", login_error: "Sign-in error" };
+    const gps = (e) => e.gps_lat != null && e.gps_lon != null ? `Precise location: <a href="https://www.openstreetmap.org/?mlat=${Number(e.gps_lat)}&mlon=${Number(e.gps_lon)}#map=17/${Number(e.gps_lat)}/${Number(e.gps_lon)}" target="_blank" rel="noopener noreferrer">${Number(e.gps_lat).toFixed(5)}, ${Number(e.gps_lon).toFixed(5)}</a>${e.gps_acc != null ? ` (±${Math.round(e.gps_acc)} m)` : ""}` : `Precise location: ${e.geo_status === "denied" ? "refused by the visitor" : e.geo_status === "timeout" ? "no answer" : "not shared"}`;
+    const card = (e) => `<div class="vx-lg vx-lg-${esc(e.severity)}"><div class="vx-lg-top"><span class="vx-lg-t">${esc(LBL[e.event] || e.event.replace(/_/g, " "))}</span><span class="vx-lg-time">${new Date(e.at).toLocaleString()}</span></div><div>IP: ${esc(e.ip || "unknown")}${e.org ? ` · ${esc(e.org)}` : ""}</div><div>Network location (approx.): ${esc([e.city, e.region, e.country].filter(Boolean).join(", ") || "unknown")}</div><div>${gps(e)}</div><div>Device: ${esc(e.device || "unknown")}</div></div>`;
+    const rows = Array.isArray(al) ? al : [], bad = rows.filter((e) => e.severity !== "info").length;
+    v.innerHTML = HDR("ACCESS LOG") + (Array.isArray(al) ? (rows.length ? `<div class="vx-lg-sum">${rows.length} records · ${bad} suspicious · records cannot be edited or deleted</div><div class="vx-lgwrap">${rows.map(card).join("")}</div>` : EMPTY("No records yet", "Every sign-in and every attempt to get in is recorded here.")) : EMPTY("Access log not ready", "Apply database migration 0008, then reload.")) + HDR("LOCK EVENTS") + (l.length ? `<div class="space-y-2">${l.map((e) => `<div class="glass-card rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-[11px] font-mono"><span class="text-slate-200">${esc(e.event.replace(/_/g, " "))}</span><span class="text-slate-400">${new Date(e.at).toLocaleString()}</span></div>`).join("")}</div>` : EMPTY("No activity yet", "Sign-ins and lock events appear here."));
   } else if (tab === "settings") {
     const [l, ix, ec] = await Promise.all([api("/api/passkeys").then((r) => r.json()), api("/api/search/status").then((r) => r.json()).catch(() => null), api("/api/e2ee").then((r) => r.json()).catch(() => null)]);
     v.innerHTML = HDR("SETTINGS") + `<div class="${CARD}"><h3 class="text-xs font-bold font-mono tracking-wider text-white uppercase">Passkeys</h3>${l.length ? `<div class="space-y-2">${l.map((k) => `<div class="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-[#040817] border border-blue-950/70 text-[11px] font-mono text-slate-200"><span>${esc(k.name)}</span><button data-pkdel="${k.id}" class="${DBTN}">Remove</button></div>`).join("")}</div>` : `<p class="text-[11px] font-mono text-slate-400">No passkeys yet. Once you add one, sign-in requires it.</p>`}${FIELD("pks", "Secret code (needed to add or remove a passkey)")}<button data-pkadd="1" class="${GBTN}">Add a passkey</button></div>
@@ -322,11 +327,15 @@ const checkFile = (f) => {
   return "";
 };
 const qKey = (f) => `${f.name}|${f.size}|${f.lastModified}`;
-function renderQueue() { // the files chosen so far; each one can be removed before uploading
+const splitName = (n) => { const i = n.lastIndexOf("."); return i > 0 ? [n.slice(0, i), n.slice(i)] : [n, ""]; };
+const qo = new WeakMap(), qid = (f) => qo.get(f) || qKey(f); // a renamed file keeps its original identity, so picking the same file twice is still caught
+const addFiles = (list) => { const have = new Set(pending.map(qid)); for (const f of list) if (!have.has(qKey(f))) { qo.set(f, qKey(f)); pending.push(f); } renderQueue(); };
+function renderQueue() { // the files chosen so far; the name of each can be edited, and each can be removed, before uploading
   const q = $("upload-queue"); q.classList.toggle("hidden", !pending.length);
-  q.innerHTML = pending.map((f, i) => `<div class="vx-qrow"><span class="vx-qname">${esc(f.name)}</span><span class="vx-qsize">${fmt(f.size)}</span><button data-qrm="${i}" title="Remove from the list" aria-label="Remove ${esc(f.name)} from the list" class="vx-qx">×</button></div>`).join("");
+  q.innerHTML = pending.map((f, i) => { const [b, x] = splitName(f.name); return `<div class="vx-qrow"><input data-qname="${i}" value="${esc(b)}" maxlength="100" spellcheck="false" aria-label="File name" class="vx-qin"><span class="vx-qext">${esc(x)}</span><span class="vx-qsize">${fmt(f.size)}</span><button data-qrm="${i}" title="Remove from the list" aria-label="Remove ${esc(f.name)} from the list" class="vx-qx">×</button></div>`; }).join("");
   $("btn-start-upload").textContent = pending.length ? `Upload (${pending.length})` : "Choose files"; $("btn-start-upload").disabled = busy;
 }
+const renameQueued = (el) => { const i = Number(el.dataset.qname), f = pending[i]; if (!f) return; const x = splitName(f.name)[1], b = cleanName(el.value).trim().slice(0, 100) || "file", nf = new File([f], b + x, { type: f.type, lastModified: f.lastModified }); qo.set(nf, qid(f)); pending[i] = nf; }; // the extension stays fixed, so the file type check still matches
 const openUp = () => { $("upload-modal").classList.remove("hidden"); const t = ctx.startsWith("col:") ? $("media-view-title").textContent : ""; $("upload-target").textContent = t ? `Uploads are added to: ${t}` : ""; $("upload-target").classList.toggle("hidden", !t); renderQueue(); };
 function closeUp() { if (cur) { cur.cancelled = true; cur.xhrs.forEach((x) => x.abort()); } $("upload-modal").classList.add("hidden"); $("upload-progress-container").classList.add("hidden"); $("upload-bar").style.width = "0%"; pending = []; renderQueue(); }
 async function runUploads(files) {
@@ -469,15 +478,17 @@ $("searchInput").addEventListener("input", () => {
   if ($("view-media").classList.contains("hidden")) { if (search) location.hash = "all"; return; } // any other page: jump to Media, render() applies the search
   searchT = setTimeout(applySearch, search ? 350 : 0);
 });
-$("modalFileInput").addEventListener("change", (e) => { const have = new Set(pending.map(qKey)); for (const f of [...e.target.files]) if (!have.has(qKey(f))) pending.push(f); e.target.value = ""; renderQueue(); }); // adds to the list instead of replacing it
-$("vaultFileInput").addEventListener("change", (e) => { const f = [...e.target.files]; e.target.value = ""; runUploads(f); });
+$("modalFileInput").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; }); // adds to the list instead of replacing it
+$("upload-queue").addEventListener("input", (e) => { if (e.target.dataset && e.target.dataset.qname !== undefined) renameQueued(e.target); });
+$("upload-queue").addEventListener("change", (e) => { const el = e.target; if (el.dataset && el.dataset.qname !== undefined) { renameQueued(el); el.value = splitName(pending[Number(el.dataset.qname)].name)[0]; } }); // on leaving the box, show the cleaned name
+$("vaultFileInput").addEventListener("change", (e) => { const f = [...e.target.files]; e.target.value = ""; addFiles(f); openUp(); }); // every upload goes through the list, so names can be edited first
 const dz = $("files-drop-area");
 dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("border-amber-400/70"); });
 dz.addEventListener("dragleave", () => dz.classList.remove("border-amber-400/70"));
-dz.addEventListener("drop", (e) => { e.preventDefault(); dz.classList.remove("border-amber-400/70"); runUploads([...e.dataTransfer.files]); });
+dz.addEventListener("drop", (e) => { e.preventDefault(); dz.classList.remove("border-amber-400/70"); addFiles([...e.dataTransfer.files]); openUp(); });
 $("rfile").addEventListener("change", async (e) => {
   const f = e.target.files[0]; e.target.value = ""; if (!f || !resumeT) return;
-  if (f.size !== resumeT.size || cleanName(f.name) !== resumeT.name) return toast(`Pick the same file: ${resumeT.name} (${fmt(resumeT.size)}).`);
+  if (f.size !== resumeT.size) return toast(`Pick the same file (${fmt(resumeT.size)}): ${resumeT.name}`); // the saved name may have been edited, so only the size is compared
   openUp(); try { await upVideo(f, resumeT); toast("Uploaded " + f.name); } catch (m) { toast((m && m.message) || String(m)); } finally { closeUp(); resumeT = null; }
   refresh();
 });
